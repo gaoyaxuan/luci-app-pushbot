@@ -106,14 +106,31 @@ a=s:taboption("basic", Value,"bark_token",translate('Bark Token'), translate("Ba
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 
+
+
 a=s:taboption("basic", Flag,"bark_srv_enable",translate("自建 Bark 服务器"))
 a.default=0
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 
+a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"))
+a.default=0
+a.rmempty = true
+a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
+
+
+a=s:taboption("basic", Value,"bark_encryption_key",translate('key'))
+a.rmempty = true
+a:depends("bark_encryption_enable","1")
+
+a=s:taboption("basic", Value,"bark_encryption_iv",translate('iv'))
+a.rmempty = true
+a:depends("bark_encryption_enable","1")
+
 a=s:taboption("basic", Value,"bark_srv",translate('Bark Server'), translate("Bark 自建服务器地址").."<br>如https://your.domain:port<br>具体自建服务器设定参见：<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
 a:depends("bark_srv_enable","1")
+
 
 a=s:taboption("basic", Value,"bark_sound",translate('Bark Sound'), translate("Bark 通知声音").."<br>如silence.caf<br>具体设定参见：<a href='https://github.com/Finb/Bark/tree/master/Sounds' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
