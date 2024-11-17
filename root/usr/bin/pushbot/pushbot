@@ -107,7 +107,7 @@ function diy_send(){
         local  bark_encryption_url="${bark_srv}/${bark_token}"
         local key=$(printf ${bark_encryption_key} | xxd -ps -c 200)
         local iv=$(printf ${bark_encryption_iv}| xxd -ps -c 200)
-        local ciphertext=$(openssl enc -aes-128-cbc -K ${key} -iv ${iv} -in ${data//@/} | base64 |awk '{printf "%s",$1}'|sed 's/ //g')
+        local ciphertext=$(openssl enc -aes-256-cbc -K ${key} -iv ${iv} -in ${data//@/} | base64 |awk '{printf "%s",$1}'|sed 's/ //g')
         local ciphertext_json_data="{ \"ciphertext\": \"${ciphertext}\"}"
   	    curl -X POST -H "$content_type" -d "${ciphertext_json_data}" "${bark_encryption_url}"
 	else

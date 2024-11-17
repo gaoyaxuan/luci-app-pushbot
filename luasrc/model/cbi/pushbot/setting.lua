@@ -113,19 +113,42 @@ a.default=0
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 
-a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"))
+a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"), translate("发送时加密算法").."<br> AES256  CBC  pkcs7<br>")
 a.default=0
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 
-
 a=s:taboption("basic", Value,"bark_encryption_key",translate('key'))
-a.rmempty = true
+a.rmempty = false
 a:depends("bark_encryption_enable","1")
+
+-- 添加长度校验逻辑
+function a.validate(self, value, section)
+    if not value or value == "" then
+        return nil, translate("The encryption key cannot be empty.")
+    end
+    local length = #value
+    if length ~= 32 then
+        return nil, translate("The encryption key must be exactly 32 characters long.")
+    end
+    return value
+end
 
 a=s:taboption("basic", Value,"bark_encryption_iv",translate('iv'))
-a.rmempty = true
+a.rmempty = false
 a:depends("bark_encryption_enable","1")
+
+-- 添加长度校验逻辑
+function a.validate(self, value, section)
+    if not value or value == "" then
+        return nil, translate("The encryption IV cannot be empty.")
+    end
+    local length = #value
+    if length ~= 16 then
+        return nil, translate("The encryption IV must be exactly 16 characters long.")
+    end
+    return value
+end
 
 a=s:taboption("basic", Value,"bark_srv",translate('Bark Server'), translate("Bark 自建服务器地址").."<br>如https://your.domain:port<br>具体自建服务器设定参见：<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
