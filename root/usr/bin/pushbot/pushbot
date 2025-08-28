@@ -109,9 +109,9 @@ function diy_send(){
         local iv=$(printf ${bark_encryption_iv}| xxd -ps -c 200)
         local ciphertext=$(openssl enc -aes-256-cbc -K ${key} -iv ${iv} -in ${data//@/} | base64 |awk '{printf "%s",$1}'|sed 's/ //g')
         local ciphertext_json_data="{ \"ciphertext\": \"${ciphertext}\"}"
-  	    curl -X POST -H "$content_type" -d "${ciphertext_json_data}" "${bark_encryption_url}"
+  	    curl  -L --post301 --post302 -X POST -H "$content_type" -d "${ciphertext_json_data}" "${bark_encryption_url}"
 	else
-	  curl -X POST -H "$content_type" -d "${data}" "${diyurl}"
+	  curl  -L --post301 --post302 -X POST -H "$content_type" -d "${data}" "${diyurl}"
 	fi
 }
 
@@ -164,7 +164,7 @@ function getip(){
 		{
 			local url_number=`echo "$ipv4_urllist"|wc -l`
 			local ipv4_URL=`echo "$ipv4_urllist"| sed -n "$(rand 1 $url_number)p"|sed -e 's/\r//g'`
-			[ ! -z "$ipv4_interface" ] && local hostIP=$(curl -k -s -4 --interface ${ipv4_interface} -m 5 ${ipv4_URL}) || local hostIP=$(curl -k -s -4 -m 5 ${ipv4_URL})
+			[ ! -z "$ipv4_interface" ] && local hostIP=$(curl -L  -k -s -4 --interface ${ipv4_interface} -m 5 ${ipv4_URL}) || local hostIP=$(curl -L  -k -s -4 -m 5 ${ipv4_URL})
 			echo $hostIP|grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'|head -n1
 		}
 		local hostIP=`get_hostipv4`
@@ -180,7 +180,7 @@ function getip(){
 		{
 			local urlv6_number=`echo "$ipv6_urllist"|wc -l`
 			local ipv6_URL=`echo "$ipv6_urllist"| sed -n "$(rand 1 $urlv6_number)p"|sed -e 's/\r//g'`
-			[ ! -z "$ipv6_interface" ] && local hostIPv6=$(curl -k -s -6 --interface ${ipv6_interface} -m 5 ${ipv6_URL}) || local hostIPv6=$(curl -k -s -6 -m 5 ${ipv6_URL})
+			[ ! -z "$ipv6_interface" ] && local hostIPv6=$(curl -L  -k -s -6 --interface ${ipv6_interface} -m 5 ${ipv6_URL}) || local hostIPv6=$(curl -L -k -s -6 -m 5 ${ipv6_URL})
 			echo $hostIPv6|grep -oE '([\da-fA-F0-9]{1,4}(:{1,2})){1,15}[\da-fA-F0-9]{1,4}'|head -n1
 		}
 		local hostIPv6=`get_hostipv6`
@@ -230,7 +230,7 @@ function getname(){
 	done
 	( ! echo "$tmp_name"|grep -q -w "unknown\|*" ) && [ ! -z "$tmp_name" ] && echo "$tmp_name" && return || unset tmp_name # 为unknown时重新读取
 	[ -f "$oui_base" ] && local tmp_name=$(cat $oui_base|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/ /_/g')
-	[ ! -z "$oui_data" ] && [ "$oui_data" -eq "4" ] && local tmp_name=$(curl -sS "https://standards-oui.ieee.org/oui/oui.txt"|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/ /_/g')
+	[ ! -z "$oui_data" ] && [ "$oui_data" -eq "4" ] && local tmp_name=$(curl  -L -sS "https://standards-oui.ieee.org/oui/oui.txt"|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/ /_/g')
 	[ -z "$tmp_name" ] && local tmp_name="unknown"
 	echo "$tmp_name"
 }
@@ -619,7 +619,7 @@ function rand_geturl(){
 		local urllist="https://www.163.com https://www.qq.com https://www.baidu.com https://www.douban.com https://pan.baidu.com https://www.alipan.com/"
 		local url_number=`expr $(echo "$urllist"|grep -o ' '|wc -l) + 1`
 		local url_str=`echo "$urllist"|awk -v i=$(rand 1 $url_number) '{print $i}'`
-		echo `curl -k -s -w "%{http_code}" -m 5 ${url_str} -A "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36" -o /dev/null`
+		echo `curl -L -k -s -w "%{http_code}" -m 5 ${url_str} -A "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36" -o /dev/null`
 	}
 	local check=`getcheck`
 	while [ -z "$check" ] || [ "$check" -ne "200" ]; do
@@ -1130,7 +1130,7 @@ function send(){
 		local systemload=`cat /proc/loadavg|awk '{print $1" "$2" "$3}'`
 		local cpuload=`getcpu`
 		local ramload=`free -m|sed -n '2p'|awk '{printf "%.2f%%\n",($3/$2)*100}'`
-		local Qwai=`curl -o /dev/null --connect-timeout ${google_check_timeout} -s -w %{http_code} www.google.com`
+		local Qwai=`curl -L -o /dev/null --connect-timeout ${google_check_timeout} -s -w %{http_code} www.google.com`
 		if [[ "$Qwai" -eq "200" ]] || [[ "$Qwai" -eq "301" ]] || [[ "$Qwai" -eq "302" ]]; then
 			local Qwai_status="已连通！"
 		else
@@ -1152,7 +1152,7 @@ function send(){
 	fi
 
 	if [ -z "$1" ] && [ ! -z "$router_wan" ] && [ "$router_wan" -eq "1" ]; then
-		local send_wanIP=`getip wanipv4`;local send_hostIP=`getip hostipv4`
+		local send_wanIP=`getip 'wanipv4'`;local send_hostIP=`getip 'hostipv4'`
 		local send_content="${send_content}${str_splitline}${str_title_start}${font_blue} WAN 口信息${font_end}${str_title_end}${str_linefeed}${str_tab}接口ip:${send_wanIP}"
 		local send_content="${send_content}${str_linefeed}${str_tab}外网ip:${send_hostIP}"
 		if [ ! -z "$pushbot_ipv6" ] && [ "$pushbot_ipv6" -ne "0" ]; then
