@@ -1,26 +1,52 @@
 #!/bin/sh /etc/rc.common
 
 START=99
-STOP=10
+STOP=90
+USE_PROCD=1
 
-start() {
-	state=`pgrep -f "/usr/bin/pushbot/pushbot"`
-	if [ ! -z "$state" ]; then
-		restart
-	else
-		/usr/bin/pushbot/pushbot &
-	fi
-	echo "pushbot is starting now ..."
+dir="/tmp/pushbot/"
+
+start_service() {
+    enable_value=$(uci get pushbot.pushbot.pushbot_enable 2>/dev/null || echo "0")
+
+    # 只有在启用时才创建实例
+    if [ "$enable_value" -ne "0" ]; then
+        # 确保目录存在
+        mkdir -p $dir
+
+        procd_open_instance
+        procd_set_param command /usr/bin/pushbot/pushbot
+
+        # 添加重启参数
+        procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
+
+        # 重定向日志
+        procd_set_param stdout 1
+        procd_set_param stderr 1
+
+        # 设置工作目录
+        procd_set_param file /etc/config/pushbot
+        procd_set_param pidfile /var/run/pushbot.pid
+
+        procd_close_instance
+        echo "pushbot is starting now ..."
+    else
+        echo "pushbot is disabled, not starting"
+    fi
 }
 
-stop() {
+reload_service() {
+    stop
+    sleep 1
+    start
+}
+
+stop_service() {
+  echo "stop" > /tmp/aa.log
 	kill -9 `pgrep -f "/usr/bin/pushbot/pushbot"` 2>/dev/null
 	echo "pushbot exit ..."
 }
 
-restart(){
-	stop
-	sleep 1
-	start
-	echo "restarted."
+service_triggers() {
+    procd_add_reload_trigger pushbot
 }

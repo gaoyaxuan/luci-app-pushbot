@@ -154,9 +154,9 @@ function deltemp(){
 # 检测程序开关
 function enable_detection(){
 	[ ! "$1" ] && local time_n=1
-	for i in `seq 1 $time_n`; do
-		get_config pushbot_enable;[ -z "$pushbot_enable" ] || [ "$pushbot_enable" -eq "0" ] && `/etc/init.d/pushbot stop` || sleep 1
-	done
+#	for i in `seq 1 $time_n`; do
+#		get_config pushbot_enable;[ -z "$pushbot_enable" ] || [ "$pushbot_enable" -eq "0" ] && `/etc/init.d/pushbot stop` || sleep 1
+#	done
 }
 
 # 获取 ip
@@ -305,6 +305,7 @@ function usage(){
 		[ "$2" ] && sed -i "/,${2},/d" ${dir}usage.db 2>/dev/null
 	fi
 }
+
 
 # 流量数据单位换算
 function bytes_for_humans {

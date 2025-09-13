@@ -28,6 +28,18 @@ a=s:taboption("basic", Flag,"pushbot_enable",translate("启用"))
 a.default=0
 a.rmempty = true
 
+function a.write(self, section, value)
+    if value == "1" then
+        luci.sys.call("/etc/init.d/pushbot enable >/dev/null")
+        luci.sys.call("/etc/init.d/pushbot start >/dev/null")
+    else
+        luci.sys.call("/etc/init.d/pushbot stop >/dev/null")
+        luci.sys.call("/etc/init.d/pushbot disable >/dev/null")
+    end
+    return Flag.write(self, section, value)
+end
+
+
 --精简模式
 a = s:taboption("basic", MultiValue, "lite_enable", translate("精简模式"))
 a:value("device", translate("精简当前设备列表"))
