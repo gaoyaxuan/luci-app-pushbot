@@ -110,7 +110,7 @@ function diy_send(){
 	[ -f ${tempjsonpath} ] && local logrow=$(grep -c "" ${tempjsonpath}) || local logrow="0"
 	[ $logrow -eq "0" ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】json 文件生成失败，请检查文件格式" >> ${logfile} && return 1
 	/usr/bin/jq -r '.[]' ${tempjsonpath}|grep "null" && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】参数变量生成失败，请检查设置项 `/usr/bin/jq -r '.' ${tempjsonpath}|grep "null"`" >> ${logfile}
-		if [ "${bark_encryption_enable}" = "1" ]; then
+	if [ "${bark_encryption_enable}" = "1" ]; then
         local  bark_encryption_url="${bark_srv}/${bark_token}"
         local key=$(printf ${bark_encryption_key} | xxd -ps -c 200)
         local iv=$(printf ${bark_encryption_iv}| xxd -ps -c 200)
@@ -292,7 +292,7 @@ function usage(){
 		function version_le() { test "$(echo "$@"|tr " " "\n"|sort -n|head -n 1)" == "$1"; }
 		function version_ge() { test "$(echo "$@"|tr " " "\n"|sort -r|head -n 1)" == "$1"; }
 		[ ! -z "$wr_version" ] && ( version_ge "${wr_version}" "1.2.0" ) && wrtbwmon -f ${dir}usage.db 2>/dev/null && return
-		[ ! -z "$wr_version" ] && ( version_le "${wr_version}" "1.0.0" ) || [ -z "$wr_version" ] && wrtbwmon update ${dir}usage.db 2>/dev/null && return
+		[ ! -z "$wr_version" ] && ( version_le "${wr_version}" "1.0.0" ) || [ -z "$wr_version" ] && wrtbwmon update -f ${dir}usage.db 2>/dev/null && return
 	elif [ $1 == "get" ] ;then
 		[ ! -f "${dir}usage.db" ] && [ ! "$3" ] && echo `bytes_for_humans 0` && return
 		[ ! -f "${dir}usage.db" ] && [ "$3" ] && echo 0 && return
