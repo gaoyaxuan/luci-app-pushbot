@@ -1,0 +1,183 @@
+#
+#* Copyright (C) 2025-2025 sbwml
+#* https://github.com/sbwml/luci-app-mosdns/blob/v5/.github/workflows/release-build.yml
+#* This is free software, licensed under the GNU General Public License v3.
+#* See /LICENSE for more information.
+#
+#
+
+name: Build luci-app-pushbot
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - x86_64
+          - aarch64_cortex-a53
+          - aarch64_cortex-a72
+          - aarch64_cortex-a76
+          - aarch64_generic
+          - arm_arm1176jzf-s_vfp
+          - arm_arm926ej-s
+          - arm_cortex-a15_neon-vfpv4
+          - arm_cortex-a5_vfpv4
+          - arm_cortex-a7
+          - arm_cortex-a7_neon-vfpv4
+          - arm_cortex-a7_vfpv4
+          - arm_cortex-a8_vfpv3
+          - arm_cortex-a9
+          - arm_cortex-a9_neon
+          - arm_cortex-a9_vfpv3-d16
+          - arm_fa526
+          - arm_xscale
+          - i386_pentium-mmx
+          - i386_pentium4
+          - loongarch64_generic
+          - mips64_mips64r2
+          - mips64_octeonplus
+          - mips64el_mips64r2
+          - mips_24kc
+          - mips_4kec
+          - mips_mips32
+          - mipsel_24kc
+          - mipsel_24kc_24kf
+          - mipsel_74kc
+          - mipsel_mips32
+          - riscv64_riscv64
+        sdk:
+          - openwrt-24.10
+          - SNAPSHOT
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          path: openwrt-feed/luci-app-pushbot
+
+      - name: Build Package
+        uses: sbwml/openwrt-gh-action-sdk@go1.25
+        env:
+          ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
+          FEED_DIR: ${{ github.workspace }}/openwrt-feed
+          FEEDNAME: packages_ci
+          PACKAGES: luci-app-pushbot
+          NO_REFRESH_CHECK: true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch }}-${{ matrix.sdk }}
+          path: |
+            bin/packages/${{ matrix.arch }}/packages_ci/*.apk
+            bin/packages/riscv64_generic/packages_ci/*.apk
+            bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+
+      - name: Create compress files
+        continue-on-error: true
+        run: |
+          if [ "${{ matrix.arch }}" = "riscv64_riscv64" ] && [ "${{ matrix.sdk }}" = "SNAPSHOT" ]; then
+            find "bin/packages/riscv64_generic/packages_ci" -type d -empty -delete
+            tar -zcvf ${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/riscv64_generic/ packages_ci
+          else
+            find "bin/packages/${{ matrix.arch }}/packages_ci" -type d -empty -delete
+            tar -zcvf ${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
+          fi
+
+      - name: Upload packages
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          replacesArtifacts: true
+          prerelease: false
+          artifacts: "${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
+          body: |
+            ## 🎉 LuCI App Pushbot ${{ github.ref_name }}
+
+            ✅ **全架构编译完成！**
+
+            ### 📦 快速安装
+
+            1. 在下方 **Assets** 中找到你的设备架构
+            2. 下载对应的 `.ipk` 或 `.apk` 文件
+            3. 上传到路由器并安装
+
+            ```bash
+            # IPK 安装（旧版 OpenWrt）
+            opkg install luci-app-pushbot_*.ipk
+
+            # APK 安装（OpenWrt 24.10+）
+            apk add --allow-untrusted luci-app-pushbot_*.apk
+            ```
+
+            ### 🏗️ 支持的架构 (共64个包)
+
+            #### 🖥️ x86 架构
+            - `x86_64` - 64位 x86 设备
+            - `i386_pentium4`, `i386_pentium-mmx` - 32位 x86 设备
+
+            #### 📱 ARM 64位 (aarch64)
+            - `aarch64_generic` - 通用 ARM64
+            - `aarch64_cortex-a53` - Cortex-A53 (树莓派3)
+            - `aarch64_cortex-a72` - Cortex-A72 (树莓派4)
+            - `aarch64_cortex-a76` - Cortex-A76
+
+            #### 📱 ARM 32位
+            - `arm_cortex-a7` - Cortex-A7
+            - `arm_cortex-a9` - Cortex-A9
+            - `arm_cortex-a15_neon-vfpv4` - Cortex-A15
+            - 等多个 ARM 子架构
+
+            #### 🌐 MIPS 架构  
+            - `mipsel_24kc` - MT7621路由器 (小米、红米等)
+            - `mips_24kc` - AR71xx路由器
+            - `mips64_octeonplus` - Cavium Octeon
+            - 等多个 MIPS 变种
+
+            #### 🆕 其他架构
+            - `riscv64_riscv64` - RISC-V 64位
+            - `loongarch64_generic` - 龙芯架构
+
+            ### 📋 SDK 版本说明
+
+            | 版本 | 说明 | 推荐 |
+            |------|------|------|
+            | **openwrt-24.10** | 稳定版，经过充分测试 | ⭐ 推荐 |
+            | **SNAPSHOT** | 开发版，包含最新功能 | 尝鲜 |
+
+            ### 💡 不知道选哪个？
+
+            **方法1**: SSH 到路由器执行
+            ```bash
+            opkg print-architecture
+
+            apk --print-arch
+            ```
+
+            **方法2**: 查看路由器型号
+            - 小米/红米路由器 → `mipsel_24kc`
+            - 树莓派4 → `aarch64_cortex-a72`
+            - x86软路由 → `x86_64`
+
+            **方法3**: 查看 OpenWrt 版本
+            ```bash
+            cat /etc/openwrt_release
+            ```
+
+            ---
+
+            **Star ⭐ 本项目可以获取更新通知！**
