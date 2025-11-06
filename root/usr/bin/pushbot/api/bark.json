@@ -25,12 +25,10 @@
         "device_key": "\"${bark_token}\"",
         "title": "\"${1}\"",
         "body": "\"${nowtime}${str_linefeed}${2}\"",
-        "ext_params": {
-            "group": "\"${device_name}\"",
-            "isArchive": "1",
-            "icon": "\"${bark_icon}\"",
-            "level": "\"${bark_level}\""
-        },
+        "group": "\"${device_name}\"",
+        "isArchive": "1",
+        "icon": "\"${bark_icon}\"",
+        "level": "\"${bark_level}\"",
         "sound": "\"${bark_sound}\""
     }
 }

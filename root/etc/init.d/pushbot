@@ -42,7 +42,6 @@ reload_service() {
 }
 
 stop_service() {
-  echo "stop" > /tmp/aa.log
 	kill -9 `pgrep -f "/usr/bin/pushbot/pushbot"` 2>/dev/null
 	echo "pushbot exit ..."
 }

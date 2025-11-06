@@ -125,47 +125,80 @@ a.default=0
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 
-a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"), translate("发送时加密算法").."<br> AES256  CBC  pkcs7<br>")
-a.default=0
-a.rmempty = true
-a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
-
-a=s:taboption("basic", Value,"bark_encryption_key",translate('key'))
-a.rmempty = false
-a:depends("bark_encryption_enable","1")
-
--- 添加长度校验逻辑
-function a.validate(self, value, section)
-    if not value or value == "" then
-        return nil, translate("The encryption key cannot be empty.")
-    end
-    local length = #value
-    if length ~= 32 then
-        return nil, translate("The encryption key must be exactly 32 characters long.")
-    end
-    return value
-end
-
-a=s:taboption("basic", Value,"bark_encryption_iv",translate('iv'))
-a.rmempty = false
-a:depends("bark_encryption_enable","1")
-
--- 添加长度校验逻辑
-function a.validate(self, value, section)
-    if not value or value == "" then
-        return nil, translate("The encryption IV cannot be empty.")
-    end
-    local length = #value
-    if length ~= 16 then
-        return nil, translate("The encryption IV must be exactly 16 characters long.")
-    end
-    return value
-end
-
 a=s:taboption("basic", Value,"bark_srv",translate('Bark Server'), translate("Bark 自建服务器地址").."<br>如https://your.domain:port<br>具体自建服务器设定参见：<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
 a:depends("bark_srv_enable","1")
 
+a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"), translate("发送时加密算法:").."AES256  CBC  pkcs7<br>")
+a.default=0
+a.rmempty = true
+a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
+
+a=s:taboption("basic", Value,"bark_encryption_key",translate('key'), translate("The encryption key must be exactly 32 characters long"))
+a.rmempty = true
+a:depends("bark_encryption_enable","1")
+
+function a.validate(self, value, section)
+    local encryption_enabled = self.map:get(section, "bark_encryption_enable")
+    if encryption_enabled == "1" then
+        if not value or value == "" then
+            return nil, translate("The encryption key cannot be empty.")
+        end
+        local length = #value
+        if length ~= 32 then
+            return nil, translate("The encryption key must be exactly 32 characters long.")
+        end
+    end
+    return value
+end
+
+a=s:taboption("basic", Value,"bark_encryption_iv",translate('iv'), translate("The encryption IV must be exactly 16 characters long"))
+a.rmempty = true
+a:depends("bark_encryption_enable","1")
+
+function a.validate(self, value, section)
+    local encryption_enabled = self.map:get(section, "bark_encryption_enable")
+    if encryption_enabled == "1" then
+        if not value or value == "" then
+            return nil, translate("The encryption IV cannot be empty.")
+        end
+        local length = #value
+        if length ~= 16 then
+            return nil, translate("The encryption IV must be exactly 16 characters long.")
+        end
+    end
+    return value
+end
+
+-- 添加生成按钮
+a = s:taboption("basic", Button, "generate_keys", translate("Generate Key & IV"))
+a.inputtitle = translate("Generate")
+a.inputstyle = "apply"
+a:depends("bark_encryption_enable", "1")
+
+function a.write(self, section)
+    -- 在服务器端生成随机值
+    local function generate_random_hex(length)
+        local chars = "0123456789abcdef"
+        local result = ""
+        for i = 1, length do
+            local rand = math.random(1, 16)
+            result = result .. string.sub(chars, rand, rand)
+        end
+        return result
+    end
+
+    -- 初始化随机数生成器
+    math.randomseed(os.time())
+
+    -- 生成 key 和 iv
+    local key = generate_random_hex(32)
+    local iv = generate_random_hex(16)
+
+    -- 设置值
+    self.map:set(section, "bark_encryption_key", key)
+    self.map:set(section, "bark_encryption_iv", iv)
+end
 
 a=s:taboption("basic", Value,"bark_sound",translate('Bark Sound'), translate("Bark 通知声音").."<br>如silence.caf<br>具体设定参见：<a href='https://github.com/Finb/Bark/tree/master/Sounds' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
