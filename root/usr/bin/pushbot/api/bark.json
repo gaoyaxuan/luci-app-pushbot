@@ -22,7 +22,6 @@
     "percentsym": "",
     "boldstar": "",
     "type": {
-        "device_key": "\"${bark_token}\"",
         "title": "\"${1}\"",
         "body": "\"${nowtime}${str_linefeed}${2}\"",
         "group": "\"${device_name}\"",

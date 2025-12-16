@@ -7,7 +7,30 @@ function get_config(){
 	done
 }
 
-get_random_user_agent() {
+function convert_tokens_to_json_array() {
+    local tokens="$1"
+
+    # 如果为空，返回空数组
+    if [ -z "$tokens" ]; then
+        echo "[]"
+        return
+    fi
+
+    # 将空格分隔的字符串转换为JSON数组
+    # "token1 token2 token3" -> ["token1","token2","token3"]
+    local json_array=$(echo "$tokens" | awk '{
+        printf "["
+        for(i=1; i<=NF; i++) {
+            printf "\"%s\"", $i
+            if(i < NF) printf ","
+        }
+        printf "]"
+    }')
+
+    echo "$json_array"
+}
+
+function get_random_user_agent() {
     cat <<'EOF' | awk 'BEGIN{srand()} {if(NF>0)lines[++c]=$0} END{print lines[int(rand()*c)+1]}'
 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15
 Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0
@@ -43,7 +66,7 @@ function read_config(){
 	"up_timeout" "down_timeout" "timeout_retry_count" "thread_num" "soc_code" "pve_host" "pve_port"\
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
 	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv" "bark_srv_enable" \
-	"bark_srv" "bark_encryption_enable"  "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon" "bark_icon_enable" "bark_level"
+	"bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon" "bark_icon_enable" "bark_level"
 
   if command -v opkg >/dev/null 2>&1; then
     	for str_version in "wrtbwmon" "iputils-arping" "curl" "iw"; do
@@ -54,7 +77,6 @@ function read_config(){
     		eval `echo ${str_version:0:2}"_version"`=`apk list -I | grep -w ^${str_version}|awk '{print $3}'` 2>/dev/null
     	done
   fi
-
 	dir="/tmp/pushbot/" && mkdir -p ${dir}
 	tempjsonpath="/tmp/pushbot/temp.json"
 	ip_blacklist_path="/usr/bin/pushbot/api/ip_blacklist"
@@ -135,20 +157,83 @@ function diy_send(){
 	[ -f ${tempjsonpath} ] && local logrow=$(grep -c "" ${tempjsonpath}) || local logrow="0"
 	[ $logrow -eq "0" ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】json 文件生成失败，请检查文件格式" >> ${logfile} && return 1
 	/usr/bin/jq -r '.[]' ${tempjsonpath}|grep "null" && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】参数变量生成失败，请检查设置项 `/usr/bin/jq -r '.' ${tempjsonpath}|grep "null"`" >> ${logfile}
-	if [ "${jsonpath}" = "/usr/bin/pushbot/api/bark.json" ] && [ "${bark_encryption_enable}" = "1" ]; then
-        local  bark_encryption_url="${bark_srv}/${bark_token}"
-        local key=$(printf ${bark_encryption_key} | xxd -ps -c 200)
-        local iv=$(printf ${bark_encryption_iv}| xxd -ps -c 200)
-        filePath="${data//@/}"
-        filePath2="${filePath}_temp123"
-        jq 'del(.device_key)' "${filePath}" > "${filePath2}" && mv "${filePath2}" "${filePath}"
-        local ciphertext=$(openssl enc -aes-256-cbc -K ${key} -iv ${iv} -in ${data//@/} | base64 |awk '{printf "%s",$1}'|sed 's/ //g')
-        local ciphertext_json_data="{ \"ciphertext\": \"${ciphertext}\"}"
-  	    curl  -A "$(get_random_user_agent)" -L --post301 --post302 -X POST -H "$content_type" -d "${ciphertext_json_data}" "${bark_encryption_url}"
+
+	# ========== Bark API 专用处理 ==========
+	if [ "${jsonpath}" = "/usr/bin/pushbot/api/bark.json" ]; then
+
+		# 1. 预处理：将 bark_token 转换为 JSON 数组
+		local bark_token_array=$(convert_tokens_to_json_array "$bark_token")
+
+		# 2. 提取原始 JSON 文件路径
+		local rawFile="${data//@/}"
+
+		# 3. 定义临时文件（在整个 if 作用域都可见）
+		local contentFile="${rawFile}_content"
+		local finalJsonFile="${rawFile}_final"
+		local bark_encryption_url="${bark_srv}/push"
+
+		# 判断是否启用加密
+		if [ "${bark_encryption_enable}" = "1" ]; then
+			# ========== 加密分支 ==========
+
+			# 删除 device_keys，只保留推送内容用于加密
+			jq 'del(.device_keys)' "$rawFile" > "$contentFile"
+
+			# 准备加密参数
+			local key_hex=$(printf "${bark_encryption_key}" | xxd -ps -c 200)
+			local cipher_algo="-${bark_encryption_algo}-${bark_encryption_mode}"
+			local openssl_cmd="openssl enc ${cipher_algo} -K ${key_hex} -in ${contentFile} -base64 -nosalt"
+
+			# 根据模式添加 IV（ECB 不需要）
+			if [ "${bark_encryption_mode}" != "ecb" ]; then
+				local iv_hex=$(printf "${bark_encryption_iv}" | xxd -ps -c 200)
+				openssl_cmd="${openssl_cmd} -iv ${iv_hex}"
+			fi
+
+			# 执行加密
+			local ciphertext=$(eval ${openssl_cmd} | tr -d '\n' | sed 's/ //g')
+
+			# 检查加密结果
+			if [ -z "$ciphertext" ]; then
+				echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密失败，密文为空" >> ${logfile}
+				rm -f "$contentFile" "$finalJsonFile"
+				return 1
+			fi
+
+			# 组装加密 JSON：{ciphertext: "...", device_keys: [...]}
+			jq -c -n \
+			   --arg ct "$ciphertext" \
+			   --argjson dks "$bark_token_array" \
+			   '{ciphertext: $ct, device_keys: $dks}' > "$finalJsonFile"
+
+		else
+			# ========== 非加密分支 ==========
+
+			# 向原始 JSON 添加 device_keys 字段
+			jq --argjson tokens "$bark_token_array" \
+			   '.device_keys = $tokens' \
+			   "$rawFile" > "$finalJsonFile"
+		fi
+
+		# 4. 发送请求（加密和非加密都走这里）
+		curl -A "$(get_random_user_agent)" -L --post301 --post302 -X POST \
+		     -H "Content-Type: application/json; charset=utf-8" \
+		     -d "@${finalJsonFile}" \
+		     "${bark_encryption_url}"
+
+		# 5. 清理临时文件
+		rm -f "$contentFile" "$finalJsonFile"
+
 	else
-	  curl  -A "$(get_random_user_agent)" -L --post301 --post302 -X POST -H "$content_type" -d "${data}" "${diyurl}"
+		# ========== 其他 API ==========
+		curl -A "$(get_random_user_agent)" -L --post301 --post302 -X POST \
+		     -H "$content_type" \
+		     -d "${data}" \
+		     "${diyurl}"
 	fi
 }
+
+
 
 # 下载设备MAC厂商信息
 function down_oui(){

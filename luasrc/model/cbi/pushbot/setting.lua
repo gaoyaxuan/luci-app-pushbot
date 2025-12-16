@@ -114,11 +114,101 @@ a=s:taboption("basic", Value,"fs_webhook",translate('WebHook'), translate("飞�
 a.rmempty = true
 a:depends("jsonpath","/usr/bin/pushbot/api/feishu.json")
 
-a=s:taboption("basic", Value,"bark_token",translate('Bark Token'), translate("Bark Token").."<br>调用代码获取<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
+a = s:taboption("basic", DynamicList, "bark_token", translate('Bark Token'),
+    translate("Bark Token")..
+    "<br>支持配置多个 Token,点击下方添加按钮增加。<br>"..
+    "调用代码获取<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
-a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
+a:depends("jsonpath", "/usr/bin/pushbot/api/bark.json")
 
+function a.validate(self, value, section)
+    return value
+end
 
+a = s:taboption("basic", Flag, "bark_encryption_enable", translate("开启推送加密"))
+a.default = 0
+a.rmempty = false
+a:depends("jsonpath", "/usr/bin/pushbot/api/bark.json")
+
+a = s:taboption("basic", ListValue, "bark_encryption_algo", translate("算法强度"))
+a:depends("bark_encryption_enable", "1")
+a:value("aes-128", "AES-128 (Key长度需 16 位)")
+a:value("aes-192", "AES-192 (Key长度需 24 位)")
+a:value("aes-256", "AES-256 (Key长度需 32 位)")
+a.default = "aes-256"
+
+a = s:taboption("basic", ListValue, "bark_encryption_mode", translate("加密模式"))
+a:depends("bark_encryption_enable", "1")
+a:value("cbc", "CBC (推荐)")
+a:value("ecb", "ECB (不安全/无IV)")
+-- a:value("gcm", "GCM")
+a.default = "cbc"
+a.description = translate("注意：GCM模式在当前系统中不可用")
+
+-- Key 输入框
+a = s:taboption("basic", Value, "bark_encryption_key", translate('Key (密钥)'),
+    translate("长度必须与上方选择的'算法强度'一致。<br><strong style='color:red;'>必填项!</strong>"))
+a:depends("bark_encryption_enable", "1")
+
+function a.validate(self, value, section)
+    local enable = self.map:get(section, "bark_encryption_enable")
+    if enable == "1" then
+        -- 检查是否为空
+        if not value or value == "" then
+            return nil, translate("开启加密后,密钥不能为空!")
+        end
+
+        -- 获取当前选择的算法,计算所需的 Key 长度
+        local algo = self.map:get(section, "bark_encryption_algo") or "aes-256"
+        local req_len = 32
+
+        if algo == "aes-128" then
+            req_len = 16
+        elseif algo == "aes-192" then
+            req_len = 24
+        elseif algo == "aes-256" then
+            req_len = 32
+        end
+
+        local cur_len = #value
+        if cur_len ~= req_len then
+            return nil, string.format(translate("当前算法 %s 要求 Key 长度必须为 %d 位,你输入了 %d 位"),
+                algo, req_len, cur_len)
+        end
+    end
+    return value
+end
+
+-- IV 输入框
+a = s:taboption("basic", Value, "bark_encryption_iv", translate('IV (偏移量)'),
+    translate("CBC/GCM 模式必填,ECB 模式不需要。<br><strong style='color:red;'>CBC 模式下必填项!</strong>"))
+-- 关键修改2: 设置为 false,使其成为必填项
+a:depends({bark_encryption_enable="1", bark_encryption_mode="cbc"})
+a:depends({bark_encryption_enable="1", bark_encryption_mode="gcm"})
+
+function a.validate(self, value, section)
+    local enable = self.map:get(section, "bark_encryption_enable")
+    local mode = self.map:get(section, "bark_encryption_mode") or "cbc"
+
+    -- 只有启用且非 ECB 模式才校验
+    if enable == "1" and mode ~= "ecb" then
+        if not value or value == "" then
+            return nil, translate("CBC/GCM 模式下 IV 不能为空!")
+        end
+
+        local length = #value
+        if mode == "cbc" then
+            if length ~= 16 then
+                return nil, translate("CBC 模式下 IV 长度必须严格为 16 位")
+            end
+        elseif mode == "gcm" then
+            if length ~= 12 then
+                return nil, translate("GCM 模式下 IV 推荐为 12 位 (也可以是 16 位)")
+            end
+        end
+    end
+    return value
+end
 
 a=s:taboption("basic", Flag,"bark_srv_enable",translate("自建 Bark 服务器"))
 a.default=0
@@ -128,77 +218,6 @@ a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
 a=s:taboption("basic", Value,"bark_srv",translate('Bark Server'), translate("Bark 自建服务器地址").."<br>如https://your.domain:port<br>具体自建服务器设定参见：<a href='https://github.com/Finb/Bark' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true
 a:depends("bark_srv_enable","1")
-
-a=s:taboption("basic", Flag,"bark_encryption_enable",translate("开启推送加密"), translate("发送时加密算法:").."AES256  CBC  pkcs7<br>")
-a.default=0
-a.rmempty = true
-a:depends("jsonpath","/usr/bin/pushbot/api/bark.json")
-
-a=s:taboption("basic", Value,"bark_encryption_key",translate('key'), translate("The encryption key must be exactly 32 characters long"))
-a.rmempty = true
-a:depends("bark_encryption_enable","1")
-
-function a.validate(self, value, section)
-    local encryption_enabled = self.map:get(section, "bark_encryption_enable")
-    if encryption_enabled == "1" then
-        if not value or value == "" then
-            return nil, translate("The encryption key cannot be empty.")
-        end
-        local length = #value
-        if length ~= 32 then
-            return nil, translate("The encryption key must be exactly 32 characters long.")
-        end
-    end
-    return value
-end
-
-a=s:taboption("basic", Value,"bark_encryption_iv",translate('iv'), translate("The encryption IV must be exactly 16 characters long"))
-a.rmempty = true
-a:depends("bark_encryption_enable","1")
-
-function a.validate(self, value, section)
-    local encryption_enabled = self.map:get(section, "bark_encryption_enable")
-    if encryption_enabled == "1" then
-        if not value or value == "" then
-            return nil, translate("The encryption IV cannot be empty.")
-        end
-        local length = #value
-        if length ~= 16 then
-            return nil, translate("The encryption IV must be exactly 16 characters long.")
-        end
-    end
-    return value
-end
-
--- 添加生成按钮
-a = s:taboption("basic", Button, "generate_keys", translate("Generate Key & IV"))
-a.inputtitle = translate("Generate")
-a.inputstyle = "apply"
-a:depends("bark_encryption_enable", "1")
-
-function a.write(self, section)
-    -- 在服务器端生成随机值
-    local function generate_random_hex(length)
-        local chars = "0123456789abcdef"
-        local result = ""
-        for i = 1, length do
-            local rand = math.random(1, 16)
-            result = result .. string.sub(chars, rand, rand)
-        end
-        return result
-    end
-
-    -- 初始化随机数生成器
-    math.randomseed(os.time())
-
-    -- 生成 key 和 iv
-    local key = generate_random_hex(32)
-    local iv = generate_random_hex(16)
-
-    -- 设置值
-    self.map:set(section, "bark_encryption_key", key)
-    self.map:set(section, "bark_encryption_iv", iv)
-end
 
 a=s:taboption("basic", Value,"bark_sound",translate('Bark Sound'), translate("Bark 通知声音").."<br>如silence.caf<br>具体设定参见：<a href='https://github.com/Finb/Bark/tree/master/Sounds' target='_blank'>点击这里</a><br><br>")
 a.rmempty = true

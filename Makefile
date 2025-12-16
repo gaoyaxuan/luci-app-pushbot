@@ -1,14 +1,14 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-pushbot
-PKG_VERSION:=3.7.5
+PKG_VERSION:=3.7.6
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=tty228 <tty228@yeah.net>  zzsj0928
 
 LUCI_TITLE:=LuCI support for Pushbot
 LUCI_PKGARCH:=all
-LUCI_DEPENDS:=+iputils-arping +curl +jq +xxd
+LUCI_DEPENDS:=+iputils-arping +curl +jq +xxd +openssl-util
 
 define Package/$(PKG_NAME)/conffiles
 /etc/config/pushbot
