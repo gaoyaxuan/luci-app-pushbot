@@ -180,7 +180,7 @@ end
 
 -- IV 输入框
 a = s:taboption("basic", Value, "bark_encryption_iv", translate('IV (偏移量)'),
-    translate("CBC/GCM 模式必填,ECB 模式不需要。<br><strong style='color:red;'>CBC 模式下必填项!</strong>"))
+    translate("<strong style='color:red;'>CBC/GCM 模式下必填项!</strong>"))
 -- 关键修改2: 设置为 false,使其成为必填项
 a:depends({bark_encryption_enable="1", bark_encryption_mode="cbc"})
 a:depends({bark_encryption_enable="1", bark_encryption_mode="gcm"})
