@@ -172,64 +172,27 @@ function diy_send(){
       if [ "${bark_encryption_enable}" = "1" ]; then
         # ========== 加密分支（使用 aes-tool）==========
         # 删除 device_keys，只保留推送内容
-        jq 'del(.device_keys)' "$rawFile" > "$contentFile" || {
-          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】JSON 处理失败" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
-          return 1
-        }
+        jq 'del(.device_keys)' "$rawFile" > "$contentFile"
         # 读取要加密的内容
         local plaintext=$(cat "$contentFile")
 
         # 验证内容不为空
         if [ -z "$plaintext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密内容为空" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
-          return 1
+          plaintext="加密内容为空!"
         fi
         # 准备加密参数
-        local key_hex="${bark_encryption_key}"
         local iv_hex="${bark_encryption_iv}"
-        local algo="${bark_encryption_algo}"
-        local mode="${bark_encryption_mode}"
-
-        # 从 algo 提取位数 (aes128 -> 128, aes256 -> 256)
-        local bits="${algo#aes}"
-
-        # 验证位数
-        case "$bits" in
-          128|192|256) ;;
-          *)
-            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】不支持的密钥长度: ${bits}" >> ${logfile}
-            rm -f "$contentFile" "$finalJsonFile"
-            return 1
-            ;;
-        esac
-
         # ECB 模式不需要真实 IV，用全0占位
-        if [ "${mode}" = "ecb" ]; then
+        if [ "${bark_encryption_mode}" = "ecb" ]; then
           iv_hex="00000000000000000000000000000000"
         fi
-
-        # 验证 key 和 IV 长度
-        local expected_key_len=$((bits / 4))  # hex 长度
-        local actual_key_len=${#key_hex}
-
-        if [ $actual_key_len -ne $expected_key_len ]; then
-          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】密钥长度错误: 期望 ${expected_key_len}，实际 ${actual_key_len}" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
-          return 1
-        fi
-
-        if [ "${mode}" != "ecb" ] && [ ${#iv_hex} -ne 32 ]; then
-          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】IV 长度错误: 期望 32，实际 ${#iv_hex}" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
-          return 1
-        fi
-
-        # 执行加密
-        local ciphertext
-        ciphertext=$(aes-tool enc "${mode}" "${bits}" "${key_hex}" "${iv_hex}" "${plaintext}" 2>&1)
+        # 加密
+        temp_cipher=$(mktemp)
+        /usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_hex}" "${contentFile}"   "${temp_cipher}"--ascii 2>&1
         local encrypt_status=$?
+        # 执行加密
+        local ciphertext=$(cat "$temp_cipher")
         # 检查加密结果
         if [ $encrypt_status -ne 0 ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密命令失败 (退出码: ${encrypt_status})" >> ${logfile}
@@ -237,6 +200,7 @@ function diy_send(){
           rm -f "$contentFile" "$finalJsonFile"
           return 1
         fi
+        rm -f "$temp_cipher"
 
         if [ -z "$ciphertext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密结果为空" >> ${logfile}
@@ -254,13 +218,6 @@ function diy_send(){
           rm -f "$contentFile" "$finalJsonFile"
           return 1
         }
-        # 调试日志
-        if [ "${bark_debug}" = "1" ]; then
-          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 算法=${algo} 模式=${mode} 位数=${bits}" >> ${logfile}
-          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 明文长度=$(echo -n "$plaintext" | wc -c)" >> ${logfile}
-          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 密文长度=$(echo -n "$ciphertext" | wc -c)" >> ${logfile}
-          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 密文预览=${ciphertext:0:50}..." >> ${logfile}
-        fi
       else
         # ========== 非加密分支 ==========
         jq --argjson tokens "$bark_token_array" \
@@ -281,11 +238,6 @@ function diy_send(){
 
       local http_code=$(echo "$response" | tail -n1)
       local body=$(echo "$response" | sed '$d')
-
-      # 记录响应
-      if [ "${bark_debug}" = "1" ]; then
-        echo "`date "+%Y-%m-%d %H:%M:%S"` [响应] HTTP=${http_code} Body=${body}" >> ${logfile}
-      fi
       # 5. 清理临时文件
       rm -f "$contentFile" "$finalJsonFile"
 

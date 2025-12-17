@@ -1,65 +1,418 @@
-CC := gcc
-CFLAGS := -Wall -Wextra -O2 -std=c99
-DEFINES := -DAES256=1 -DCBC=1 -DECB=1 -DCTR=1
-TARGET := aes-tool
+# Makefile.local - 本地测试编译
+# 用法: make -f Makefile.local
 
-SRC_DIR := src
-SRCS := $(SRC_DIR)/aes.c $(SRC_DIR)/main.c
-OBJS := $(SRCS:.c=.o)
+CC = gcc
+CFLAGS = -Wall -Wextra -O2 -Isrc
+LDFLAGS = -lmbedcrypto
+TARGET = aes-tool
 
-.PHONY: all clean test
+# 源文件目录
+SRC_DIR = src
+SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/aes_crypto.c
+OBJECTS = $(SOURCES:.c=.o)
 
-all: $(TARGET)
+# 测试文件
+TEST_DIR = test
+TEST_PLAIN = $(TEST_DIR)/plain.txt
+TEST_SECRET = $(TEST_DIR)/secret.txt
 
-$(TARGET): $(OBJS)
-	@echo "Linking $@..."
-	$(CC) $(CFLAGS) -o $@ $^
+# 检测 mbedtls 是否安装
+MBEDTLS_CHECK := $(shell pkg-config --exists mbedtls 2>/dev/null && echo yes || echo no)
+
+.PHONY: all clean test test-all test-ecb test-cbc test-ctr test-gcm test-ascii test-binary test-performance install help check-deps
+
+all: check-deps $(TARGET)
+
+# 检查依赖
+check-deps:
+	@echo "检查依赖..."
+	@if ! command -v $(CC) >/dev/null 2>&1; then \
+		echo "错误: 找不到 gcc 编译器"; \
+		exit 1; \
+	fi
+	@if [ "$(MBEDTLS_CHECK)" = "no" ]; then \
+		echo "警告: 未检测到 mbedtls"; \
+		echo "请安装: sudo apt install libmbedtls-dev  (Ubuntu/Debian)"; \
+		echo "       或 sudo yum install mbedtls-devel   (CentOS/RHEL)"; \
+		echo "       或 brew install mbedtls             (macOS)"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(SRC_DIR)" ]; then \
+		echo "错误: 找不到 src 目录"; \
+		echo "请确保目录结构:"; \
+		echo "  src/main.c"; \
+		echo "  src/aes_crypto.c"; \
+		echo "  src/aes_crypto.h"; \
+		echo "  Makefile.local (当前文件)"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(SRC_DIR)/main.c" ]; then \
+		echo "错误: 找不到 src/main.c"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(SRC_DIR)/aes_crypto.c" ]; then \
+		echo "错误: 找不到 src/aes_crypto.c"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(SRC_DIR)/aes_crypto.h" ]; then \
+		echo "错误: 找不到 src/aes_crypto.h"; \
+		exit 1; \
+	fi
+	@echo "✓ 依赖检查通过"
+
+$(TARGET): $(OBJECTS)
+	@echo "链接 $(TARGET)..."
+	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
+	@echo "✓ 编译完成: $(TARGET)"
+	@echo ""
+	@echo "运行测试: make -f Makefile.local test"
+	@echo "查看帮助: ./$(TARGET) 或 make -f Makefile.local help"
 
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c
-	@echo "Compiling $<..."
-	$(CC) $(CFLAGS) $(DEFINES) -c $< -o $@
+	@echo "编译 $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	@echo "Cleaning..."
-	rm -f $(TARGET) $(OBJS)
+	@echo "清理..."
+	@rm -f $(OBJECTS) $(TARGET)
+	@rm -rf $(TEST_DIR)
+	@echo "✓ 清理完成"
 
-test: $(TARGET)
-	@echo "=== Testing CBC-128 Encryption ==="
-	@CIPHER=$$(./$(TARGET) enc cbc 128 \
-		0123456789abcdef0123456789abcdef \
-		0123456789abcdef0123456789abcdef \
-		"Hello World!"); \
-	echo "Plaintext: Hello World!"; \
-	echo "Ciphertext (Base64): $$CIPHER"; \
-	PLAIN=$$(./$(TARGET) dec cbc 128 \
-		0123456789abcdef0123456789abcdef \
-		0123456789abcdef0123456789abcdef \
-		"$$CIPHER"); \
-	echo "Decrypted: $$PLAIN"; \
-	if [ "$$PLAIN" = "Hello World!" ]; then \
-		echo "✓ CBC-128 Test PASSED"; \
+# 准备测试环境
+$(TEST_DIR):
+	@mkdir -p $(TEST_DIR)
+
+$(TEST_PLAIN): | $(TEST_DIR)
+	@echo "Hello, World! This is a test message for AES encryption." > $(TEST_PLAIN)
+
+$(TEST_SECRET): | $(TEST_DIR)
+	@echo "This is a secret message that needs strong encryption with AES-256-GCM mode." > $(TEST_SECRET)
+
+# 测试密钥和IV（16进制）
+KEY_128 = 0123456789abcdef0123456789abcdef
+KEY_256 = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+IV_128 = fedcba9876543210fedcba9876543210
+IV_GCM = 0123456789abcdef01234567
+
+# ASCII 密钥和IV（用于 --ascii 测试）
+KEY_ASCII_128 = my16bytesecretky
+KEY_ASCII_256 = my32bytesecretkey1234567890ab
+IV_ASCII_128 = my16bytesiv12345
+IV_ASCII_GCM = my12bytesiv1
+
+# ==================== 测试套件 ====================
+
+test-all: $(TARGET) test-ecb test-cbc test-ctr test-gcm test-ascii test-binary
+	@echo ""
+	@echo "=========================================="
+	@echo "   ✓ 所有测试完成！"
+	@echo "=========================================="
+
+test: test-all
+
+# ECB 模式测试（Hex）
+test-ecb: $(TARGET) $(TEST_PLAIN)
+	@echo ""
+	@echo "========== 测试 ECB-128 模式 (Hex Key, Base64 Output) =========="
+	@echo "1. 加密到 Base64..."
+	@./$(TARGET) enc ecb 128 $(KEY_128) $(IV_128) \
+		$(TEST_PLAIN) $(TEST_DIR)/ecb_encrypted.b64
+	@echo ""
+	@echo "2. 解密 Base64..."
+	@./$(TARGET) dec ecb 128 $(KEY_128) $(IV_128) \
+		$(TEST_DIR)/ecb_encrypted.b64 $(TEST_DIR)/ecb_decrypted.txt
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/ecb_decrypted.txt > /dev/null 2>&1; then \
+		echo "✓ ECB 测试通过！"; \
 	else \
-		echo "✗ CBC-128 Test FAILED"; \
+		echo "✗ ECB 测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/ecb_decrypted.txt; \
+		exit 1; \
+	fi
+
+# CBC 模式测试（Hex）
+test-cbc: $(TARGET) $(TEST_PLAIN)
+	@echo ""
+	@echo "========== 测试 CBC-256 模式 (Hex Key, Base64 Output) =========="
+	@echo "1. 加密到 Base64..."
+	@./$(TARGET) enc cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_PLAIN) $(TEST_DIR)/cbc_encrypted.b64
+	@echo ""
+	@echo "2. 解密 Base64..."
+	@./$(TARGET) dec cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_DIR)/cbc_encrypted.b64 $(TEST_DIR)/cbc_decrypted.txt
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/cbc_decrypted.txt > /dev/null 2>&1; then \
+		echo "✓ CBC 测试通过！"; \
+	else \
+		echo "✗ CBC 测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/cbc_decrypted.txt; \
+		exit 1; \
+	fi
+
+# CTR 模式测试（Hex）
+test-ctr: $(TARGET) $(TEST_PLAIN)
+	@echo ""
+	@echo "========== 测试 CTR-128 模式 (Hex Key, Base64 Output) =========="
+	@echo "1. 加密到 Base64..."
+	@./$(TARGET) enc ctr 128 $(KEY_128) $(IV_128) \
+		$(TEST_PLAIN) $(TEST_DIR)/ctr_encrypted.b64
+	@echo ""
+	@echo "2. 解密 Base64..."
+	@./$(TARGET) dec ctr 128 $(KEY_128) $(IV_128) \
+		$(TEST_DIR)/ctr_encrypted.b64 $(TEST_DIR)/ctr_decrypted.txt
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/ctr_decrypted.txt > /dev/null 2>&1; then \
+		echo "✓ CTR 测试通过！"; \
+	else \
+		echo "✗ CTR 测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/ctr_decrypted.txt; \
+		exit 1; \
+	fi
+
+# GCM 模式测试（带 AAD，Hex）
+test-gcm: $(TARGET) $(TEST_SECRET)
+	@echo ""
+	@echo "========== 测试 GCM-256 模式 (带认证, Hex Key, Base64 Output) =========="
+	@echo "1. 加密到 Base64 (带 AAD)..."
+	@./$(TARGET) enc gcm 256 $(KEY_256) $(IV_GCM) \
+		$(TEST_SECRET) $(TEST_DIR)/gcm_encrypted.b64 \
+		"user_id=12345,timestamp=1234567890"
+	@echo ""
+	@echo "2. 解密 Base64 (正确的 AAD)..."
+	@./$(TARGET) dec gcm 256 $(KEY_256) $(IV_GCM) \
+		$(TEST_DIR)/gcm_encrypted.b64 $(TEST_DIR)/gcm_decrypted.txt \
+		"user_id=12345,timestamp=1234567890"
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_SECRET) $(TEST_DIR)/gcm_decrypted.txt > /dev/null 2>&1; then \
+		echo "✓ GCM 加密/解密测试通过！"; \
+	else \
+		echo "✗ GCM 测试失败！"; \
+		diff $(TEST_SECRET) $(TEST_DIR)/gcm_decrypted.txt; \
 		exit 1; \
 	fi
 	@echo ""
-	@echo "=== Testing CTR-256 Encryption ==="
-	@CIPHER=$$(./$(TARGET) enc ctr 256 \
-		0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-		0123456789abcdef0123456789abcdef \
-		"Secret Message"); \
-	echo "Plaintext: Secret Message"; \
-	echo "Ciphertext (Base64): $$CIPHER"; \
-	PLAIN=$$(./$(TARGET) dec ctr 256 \
-		0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-		0123456789abcdef0123456789abcdef \
-		"$$CIPHER"); \
-	echo "Decrypted: $$PLAIN"; \
-	if [ "$$PLAIN" = "Secret Message" ]; then \
-		echo "✓ CTR-256 Test PASSED"; \
+	@echo "4. 测试认证失败（错误的 AAD）..."
+	@if ./$(TARGET) dec gcm 256 $(KEY_256) $(IV_GCM) \
+		$(TEST_DIR)/gcm_encrypted.b64 $(TEST_DIR)/gcm_fail.txt \
+		"wrong_aad" 2>&1 | grep -q "failed"; then \
+		echo "✓ GCM 认证保护测试通过！（正确拒绝了篡改）"; \
 	else \
-		echo "✗ CTR-256 Test FAILED"; \
+		echo "⚠ GCM 认证测试：未能检测到认证失败"; \
+	fi
+
+# ASCII 密钥测试
+test-ascii: $(TARGET) $(TEST_PLAIN)
+	@echo ""
+	@echo "========== 测试 ASCII 密钥格式 =========="
+	@echo ""
+	@echo "1. CBC-256 加密（ASCII key/iv, Base64 output）..."
+	@./$(TARGET) enc cbc 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_128)" \
+		$(TEST_PLAIN) $(TEST_DIR)/ascii_cbc.b64 \
+		--ascii
+	@echo ""
+	@echo "2. CBC-256 解密（ASCII key/iv）..."
+	@./$(TARGET) dec cbc 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_128)" \
+		$(TEST_DIR)/ascii_cbc.b64 $(TEST_DIR)/ascii_cbc_dec.txt \
+		--ascii
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/ascii_cbc_dec.txt > /dev/null 2>&1; then \
+		echo "✓ ASCII 密钥 CBC 测试通过！"; \
+	else \
+		echo "✗ ASCII 密钥 CBC 测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/ascii_cbc_dec.txt; \
 		exit 1; \
 	fi
 	@echo ""
-	@echo "=== All Tests PASSED ==="
+	@echo "4. GCM-256 加密（ASCII key/iv + AAD, Base64 output）..."
+	@./$(TARGET) enc gcm 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_GCM)" \
+		$(TEST_PLAIN) $(TEST_DIR)/ascii_gcm.b64 \
+		--ascii "test_aad"
+	@echo ""
+	@echo "5. GCM-256 解密（ASCII key/iv + AAD）..."
+	@./$(TARGET) dec gcm 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_GCM)" \
+		$(TEST_DIR)/ascii_gcm.b64 $(TEST_DIR)/ascii_gcm_dec.txt \
+		--ascii "test_aad"
+	@echo ""
+	@echo "6. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/ascii_gcm_dec.txt > /dev/null 2>&1; then \
+		echo "✓ ASCII 密钥 GCM 测试通过！"; \
+	else \
+		echo "✗ ASCII 密钥 GCM 测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/ascii_gcm_dec.txt; \
+		exit 1; \
+	fi
+
+# Binary 格式测试
+test-binary: $(TARGET) $(TEST_PLAIN)
+	@echo ""
+	@echo "========== 测试 Binary 格式 =========="
+	@echo ""
+	@echo "1. 加密到二进制文件 (Hex key)..."
+	@./$(TARGET) enc cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_PLAIN) $(TEST_DIR)/binary_enc.bin \
+		--binary
+	@echo ""
+	@echo "2. 解密二进制文件..."
+	@./$(TARGET) dec cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_DIR)/binary_enc.bin $(TEST_DIR)/binary_dec.txt \
+		--binary
+	@echo ""
+	@echo "3. 验证结果..."
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/binary_dec.txt > /dev/null 2>&1; then \
+		echo "✓ Binary 格式测试通过！"; \
+	else \
+		echo "✗ Binary 格式测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/binary_dec.txt; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "4. Binary + ASCII 组合测试..."
+	@./$(TARGET) enc cbc 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_128)" \
+		$(TEST_PLAIN) $(TEST_DIR)/binary_ascii.bin \
+		--binary --ascii
+	@echo ""
+	@./$(TARGET) dec cbc 256 \
+		"$(KEY_ASCII_256)" "$(IV_ASCII_128)" \
+		$(TEST_DIR)/binary_ascii.bin $(TEST_DIR)/binary_ascii_dec.txt \
+		--binary --ascii
+	@echo ""
+	@if diff -q $(TEST_PLAIN) $(TEST_DIR)/binary_ascii_dec.txt > /dev/null 2>&1; then \
+		echo "✓ Binary + ASCII 组合测试通过！"; \
+	else \
+		echo "✗ Binary + ASCII 组合测试失败！"; \
+		diff $(TEST_PLAIN) $(TEST_DIR)/binary_ascii_dec.txt; \
+		exit 1; \
+	fi
+
+# 性能测试
+test-performance: $(TARGET) $(TEST_DIR)
+	@echo ""
+	@echo "========== 性能测试 =========="
+	@echo "生成 10MB 测试文件..."
+	@dd if=/dev/urandom of=$(TEST_DIR)/large.bin bs=1M count=10 2>/dev/null
+	@ls -lh $(TEST_DIR)/large.bin
+	@echo ""
+	@echo "1. GCM-256 加密 (Binary format)..."
+	@time ./$(TARGET) enc gcm 256 $(KEY_256) $(IV_GCM) \
+		$(TEST_DIR)/large.bin $(TEST_DIR)/large_gcm.bin \
+		--binary 2>&1
+	@echo ""
+	@echo "2. GCM-256 解密 (Binary format)..."
+	@time ./$(TARGET) dec gcm 256 $(KEY_256) $(IV_GCM) \
+		$(TEST_DIR)/large_gcm.bin $(TEST_DIR)/large_gcm_dec.bin \
+		--binary 2>&1
+	@echo ""
+	@if diff -q $(TEST_DIR)/large.bin $(TEST_DIR)/large_gcm_dec.bin > /dev/null 2>&1; then \
+		echo "✓ GCM 大文件测试通过！"; \
+	else \
+		echo "✗ GCM 大文件测试失败！"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "3. CBC-256 加密 (Base64 format)..."
+	@time ./$(TARGET) enc cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_DIR)/large.bin $(TEST_DIR)/large_cbc.b64 2>&1
+	@echo ""
+	@echo "4. CBC-256 解密 (Base64 format)..."
+	@time ./$(TARGET) dec cbc 256 $(KEY_256) $(IV_128) \
+		$(TEST_DIR)/large_cbc.b64 $(TEST_DIR)/large_cbc_dec.bin 2>&1
+	@echo ""
+	@if diff -q $(TEST_DIR)/large.bin $(TEST_DIR)/large_cbc_dec.bin > /dev/null 2>&1; then \
+		echo "✓ CBC 大文件测试通过！"; \
+	else \
+		echo "✗ CBC 大文件测试失败！"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "文件大小对比:"
+	@ls -lh $(TEST_DIR)/large*.bin $(TEST_DIR)/large*.b64 2>/dev/null | awk '{print $$9, $$5}'
+
+# 安装到系统
+install: $(TARGET)
+	@echo "安装到 /usr/local/bin/..."
+	@sudo install -m 755 $(TARGET) /usr/local/bin/
+	@echo "✓ 已安装到 /usr/local/bin/$(TARGET)"
+	@echo ""
+	@echo "现在可以直接运行: $(TARGET) --help"
+
+# 帮助信息
+help:
+	@echo "=========================================="
+	@echo "  AES 加密工具 - 本地编译和测试"
+	@echo "=========================================="
+	@echo ""
+	@echo "目录结构:"
+	@echo "  src/main.c          - 主程序"
+	@echo "  src/aes_crypto.c    - 加密实现"
+	@echo "  src/aes_crypto.h    - 头文件"
+	@echo "  Makefile.local      - 本地测试 Makefile"
+	@echo "  Makefile            - GitHub Actions Makefile"
+	@echo ""
+	@echo "编译和测试:"
+	@echo "  make -f Makefile.local              # 编译程序"
+	@echo "  make -f Makefile.local test         # 运行所有测试"
+	@echo "  make -f Makefile.local test-ecb     # 测试 ECB 模式"
+	@echo "  make -f Makefile.local test-cbc     # 测试 CBC 模式"
+	@echo "  make -f Makefile.local test-ctr     # 测试 CTR 模式"
+	@echo "  make -f Makefile.local test-gcm     # 测试 GCM 模式"
+	@echo "  make -f Makefile.local test-ascii   # 测试 ASCII 密钥"
+	@echo "  make -f Makefile.local test-binary  # 测试 Binary 格式"
+	@echo "  make -f Makefile.local test-performance # 性能测试"
+	@echo "  make -f Makefile.local clean        # 清理"
+	@echo "  make -f Makefile.local install      # 安装到系统"
+	@echo ""
+	@echo "程序使用:"
+	@echo "  ./$(TARGET) enc <mode> <bits> <key> <iv> <input> <output> [options]"
+	@echo "  ./$(TARGET) dec <mode> <bits> <key> <iv> <input> <output> [options]"
+	@echo ""
+	@echo "模式: ecb, cbc, ctr, gcm"
+	@echo "密钥长度: 128, 192, 256"
+	@echo ""
+	@echo "选项:"
+	@echo "  --binary, -b  - 使用二进制格式 (默认: Base64)"
+	@echo "  --ascii, -a   - Key/IV 使用 ASCII 字符串 (默认: Hex)"
+	@echo "  aad           - GCM 模式的附加认证数据"
+	@echo ""
+	@echo "示例:"
+	@echo "  # 1. Hex key, Base64 output (默认)"
+	@echo "  ./$(TARGET) enc cbc 256 \\"
+	@echo "    0123...cdef 0123...cdef plain.txt cipher.b64"
+	@echo ""
+	@echo "  # 2. Hex key, Binary output"
+	@echo "  ./$(TARGET) enc cbc 256 \\"
+	@echo "    0123...cdef 0123...cdef plain.txt cipher.bin --binary"
+	@echo ""
+	@echo "  # 3. ASCII key/iv, Binary output"
+	@echo "  ./$(TARGET) enc cbc 256 \\"
+	@echo "    \"my32bytesecretkey1234567890ab\" \"my16bytesiv12345\" \\"
+	@echo "    plain.txt cipher.bin --binary --ascii"
+	@echo ""
+	@echo "  # 4. GCM 带 AAD"
+	@echo "  ./$(TARGET) enc gcm 256 \\"
+	@echo "    \"my32byteskey...\" \"my12bytesiv1\" \\"
+	@echo "    secret.txt encrypted.bin --ascii --binary \"user_id=123\""
+	@echo ""
+	@echo "依赖安装:"
+	@echo "  Ubuntu/Debian:  sudo apt install gcc libmbedtls-dev"
+	@echo "  CentOS/RHEL:    sudo yum install gcc mbedtls-devel"
+	@echo "  macOS:          brew install gcc mbedtls"
+	@echo ""
+	@echo "Key/IV 长度要求:"
+	@echo "  AES-128: key=16 bytes (32 hex / 16 ASCII)"
+	@echo "  AES-192: key=24 bytes (48 hex / 24 ASCII)"
+	@echo "  AES-256: key=32 bytes (64 hex / 32 ASCII)"
+	@echo "  IV: 16 bytes (32 hex / 16 ASCII)"
+	@echo "  GCM IV: 推荐 12 bytes (24 hex / 12 ASCII)"
+	@echo ""
+	@echo "=========================================="
