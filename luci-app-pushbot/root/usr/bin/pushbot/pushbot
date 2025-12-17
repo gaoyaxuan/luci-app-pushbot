@@ -158,71 +158,136 @@ function diy_send(){
 	[ $logrow -eq "0" ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】json 文件生成失败，请检查文件格式" >> ${logfile} && return 1
 	/usr/bin/jq -r '.[]' ${tempjsonpath}|grep "null" && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】参数变量生成失败，请检查设置项 `/usr/bin/jq -r '.' ${tempjsonpath}|grep "null"`" >> ${logfile}
 
-	# ========== Bark API 专用处理 ==========
-	if [ "${jsonpath}" = "/usr/bin/pushbot/api/bark.json" ]; then
+    # ========== Bark API 专用处理 ==========
+    if [ "${jsonpath}" = "/usr/bin/pushbot/api/bark.json" ]; then
+      # 1. 预处理：将 bark_token 转换为 JSON 数组
+      local bark_token_array=$(convert_tokens_to_json_array "$bark_token")
+      # 2. 提取原始 JSON 文件路径
+      local rawFile="${data//@/}"
+      # 3. 定义临时文件
+      local contentFile="${rawFile}_content"
+      local finalJsonFile="${rawFile}_final"
+      local bark_encryption_url="${bark_srv}/push"
+      # 判断是否启用加密
+      if [ "${bark_encryption_enable}" = "1" ]; then
+        # ========== 加密分支（使用 aes-tool）==========
+        # 删除 device_keys，只保留推送内容
+        jq 'del(.device_keys)' "$rawFile" > "$contentFile" || {
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】JSON 处理失败" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        }
+        # 读取要加密的内容
+        local plaintext=$(cat "$contentFile")
 
-		# 1. 预处理：将 bark_token 转换为 JSON 数组
-		local bark_token_array=$(convert_tokens_to_json_array "$bark_token")
+        # 验证内容不为空
+        if [ -z "$plaintext" ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密内容为空" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        fi
+        # 准备加密参数
+        local key_hex="${bark_encryption_key}"
+        local iv_hex="${bark_encryption_iv}"
+        local algo="${bark_encryption_algo}"
+        local mode="${bark_encryption_mode}"
 
-		# 2. 提取原始 JSON 文件路径
-		local rawFile="${data//@/}"
+        # 从 algo 提取位数 (aes128 -> 128, aes256 -> 256)
+        local bits="${algo#aes}"
 
-		# 3. 定义临时文件（在整个 if 作用域都可见）
-		local contentFile="${rawFile}_content"
-		local finalJsonFile="${rawFile}_final"
-		local bark_encryption_url="${bark_srv}/push"
+        # 验证位数
+        case "$bits" in
+          128|192|256) ;;
+          *)
+            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】不支持的密钥长度: ${bits}" >> ${logfile}
+            rm -f "$contentFile" "$finalJsonFile"
+            return 1
+            ;;
+        esac
 
-		# 判断是否启用加密
-		if [ "${bark_encryption_enable}" = "1" ]; then
-			# ========== 加密分支 ==========
+        # ECB 模式不需要真实 IV，用全0占位
+        if [ "${mode}" = "ecb" ]; then
+          iv_hex="00000000000000000000000000000000"
+        fi
 
-			# 删除 device_keys，只保留推送内容用于加密
-			jq 'del(.device_keys)' "$rawFile" > "$contentFile"
+        # 验证 key 和 IV 长度
+        local expected_key_len=$((bits / 4))  # hex 长度
+        local actual_key_len=${#key_hex}
 
-			# 准备加密参数
-			local key_hex=$(printf "${bark_encryption_key}" | xxd -ps -c 200)
-			local cipher_algo="-${bark_encryption_algo}-${bark_encryption_mode}"
-			local openssl_cmd="openssl enc ${cipher_algo} -K ${key_hex} -in ${contentFile} -base64 -nosalt"
+        if [ $actual_key_len -ne $expected_key_len ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】密钥长度错误: 期望 ${expected_key_len}，实际 ${actual_key_len}" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        fi
 
-			# 根据模式添加 IV（ECB 不需要）
-			if [ "${bark_encryption_mode}" != "ecb" ]; then
-				local iv_hex=$(printf "${bark_encryption_iv}" | xxd -ps -c 200)
-				openssl_cmd="${openssl_cmd} -iv ${iv_hex}"
-			fi
+        if [ "${mode}" != "ecb" ] && [ ${#iv_hex} -ne 32 ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】IV 长度错误: 期望 32，实际 ${#iv_hex}" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        fi
 
-			# 执行加密
-			local ciphertext=$(eval ${openssl_cmd} | tr -d '\n' | sed 's/ //g')
+        # 执行加密
+        local ciphertext
+        ciphertext=$(aes-tool enc "${mode}" "${bits}" "${key_hex}" "${iv_hex}" "${plaintext}" 2>&1)
+        local encrypt_status=$?
+        # 检查加密结果
+        if [ $encrypt_status -ne 0 ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密命令失败 (退出码: ${encrypt_status})" >> ${logfile}
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】错误信息: ${ciphertext}" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        fi
 
-			# 检查加密结果
-			if [ -z "$ciphertext" ]; then
-				echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密失败，密文为空" >> ${logfile}
-				rm -f "$contentFile" "$finalJsonFile"
-				return 1
-			fi
+        if [ -z "$ciphertext" ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密结果为空" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        fi
+        # 清理密文（移除换行符和空格）
+        ciphertext=$(echo "$ciphertext" | tr -d '\n\r' | sed 's/[[:space:]]//g')
+        # 组装加密 JSON
+        jq -c -n \
+           --arg ct "$ciphertext" \
+           --argjson dks "$bark_token_array" \
+           '{ciphertext: $ct, device_keys: $dks}' > "$finalJsonFile" || {
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】生成最终 JSON 失败" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
+        }
+        # 调试日志
+        if [ "${bark_debug}" = "1" ]; then
+          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 算法=${algo} 模式=${mode} 位数=${bits}" >> ${logfile}
+          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 明文长度=$(echo -n "$plaintext" | wc -c)" >> ${logfile}
+          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 密文长度=$(echo -n "$ciphertext" | wc -c)" >> ${logfile}
+          echo "`date "+%Y-%m-%d %H:%M:%S"` [加密] 密文预览=${ciphertext:0:50}..." >> ${logfile}
+        fi
+      else
+        # ========== 非加密分支 ==========
+        jq --argjson tokens "$bark_token_array" \
+           '.device_keys = $tokens' \
+           "$rawFile" > "$finalJsonFile" || {
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】添加 device_keys 失败" >> ${logfile}
+          rm -f "$finalJsonFile"
+          return 1
+        }
+      fi
+      # 4. 发送请求
+      local response
+      response=$(curl -s -w "\n%{http_code}" -A "$(get_random_user_agent)" \
+           -L --post301 --post302 -X POST \
+           -H "Content-Type: application/json; charset=utf-8" \
+           -d "@${finalJsonFile}" \
+           "${bark_encryption_url}")
 
-			# 组装加密 JSON：{ciphertext: "...", device_keys: [...]}
-			jq -c -n \
-			   --arg ct "$ciphertext" \
-			   --argjson dks "$bark_token_array" \
-			   '{ciphertext: $ct, device_keys: $dks}' > "$finalJsonFile"
+      local http_code=$(echo "$response" | tail -n1)
+      local body=$(echo "$response" | sed '$d')
 
-		else
-			# ========== 非加密分支 ==========
-
-			# 向原始 JSON 添加 device_keys 字段
-			jq --argjson tokens "$bark_token_array" \
-			   '.device_keys = $tokens' \
-			   "$rawFile" > "$finalJsonFile"
-		fi
-
-		# 4. 发送请求（加密和非加密都走这里）
-		curl -A "$(get_random_user_agent)" -L --post301 --post302 -X POST \
-		     -H "Content-Type: application/json; charset=utf-8" \
-		     -d "@${finalJsonFile}" \
-		     "${bark_encryption_url}"
-
-		# 5. 清理临时文件
-		rm -f "$contentFile" "$finalJsonFile"
+      # 记录响应
+      if [ "${bark_debug}" = "1" ]; then
+        echo "`date "+%Y-%m-%d %H:%M:%S"` [响应] HTTP=${http_code} Body=${body}" >> ${logfile}
+      fi
+      # 5. 清理临时文件
+      rm -f "$contentFile" "$finalJsonFile"
 
 	else
 		# ========== 其他 API ==========

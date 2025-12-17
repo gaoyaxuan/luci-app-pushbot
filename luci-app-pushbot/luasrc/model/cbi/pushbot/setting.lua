@@ -132,16 +132,16 @@ a:depends("jsonpath", "/usr/bin/pushbot/api/bark.json")
 
 a = s:taboption("basic", ListValue, "bark_encryption_algo", translate("算法强度"))
 a:depends("bark_encryption_enable", "1")
-a:value("aes-128", "AES-128 (Key长度需 16 位)")
-a:value("aes-192", "AES-192 (Key长度需 24 位)")
-a:value("aes-256", "AES-256 (Key长度需 32 位)")
-a.default = "aes-256"
+a:value("128", "AES-128 (Key长度需 16 位)")
+a:value("192", "AES-192 (Key长度需 24 位)")
+a:value("256", "AES-256 (Key长度需 32 位)")
+a.default = "256"
 
 a = s:taboption("basic", ListValue, "bark_encryption_mode", translate("加密模式"))
 a:depends("bark_encryption_enable", "1")
 a:value("cbc", "CBC (推荐)")
 a:value("ecb", "ECB (不安全/无IV)")
--- a:value("gcm", "GCM")
+a:value("gcm", "GCM")
 a.default = "cbc"
 a.description = translate("注意：GCM模式在当前系统中不可用")
 

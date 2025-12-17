@@ -1,0 +1,65 @@
+CC := gcc
+CFLAGS := -Wall -Wextra -O2 -std=c99
+DEFINES := -DAES256=1 -DCBC=1 -DECB=1 -DCTR=1
+TARGET := aes-tool
+
+SRC_DIR := src
+SRCS := $(SRC_DIR)/aes.c $(SRC_DIR)/main.c
+OBJS := $(SRCS:.c=.o)
+
+.PHONY: all clean test
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) $(DEFINES) -c $< -o $@
+
+clean:
+	@echo "Cleaning..."
+	rm -f $(TARGET) $(OBJS)
+
+test: $(TARGET)
+	@echo "=== Testing CBC-128 Encryption ==="
+	@CIPHER=$$(./$(TARGET) enc cbc 128 \
+		0123456789abcdef0123456789abcdef \
+		0123456789abcdef0123456789abcdef \
+		"Hello World!"); \
+	echo "Plaintext: Hello World!"; \
+	echo "Ciphertext (Base64): $$CIPHER"; \
+	PLAIN=$$(./$(TARGET) dec cbc 128 \
+		0123456789abcdef0123456789abcdef \
+		0123456789abcdef0123456789abcdef \
+		"$$CIPHER"); \
+	echo "Decrypted: $$PLAIN"; \
+	if [ "$$PLAIN" = "Hello World!" ]; then \
+		echo "✓ CBC-128 Test PASSED"; \
+	else \
+		echo "✗ CBC-128 Test FAILED"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "=== Testing CTR-256 Encryption ==="
+	@CIPHER=$$(./$(TARGET) enc ctr 256 \
+		0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+		0123456789abcdef0123456789abcdef \
+		"Secret Message"); \
+	echo "Plaintext: Secret Message"; \
+	echo "Ciphertext (Base64): $$CIPHER"; \
+	PLAIN=$$(./$(TARGET) dec ctr 256 \
+		0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+		0123456789abcdef0123456789abcdef \
+		"$$CIPHER"); \
+	echo "Decrypted: $$PLAIN"; \
+	if [ "$$PLAIN" = "Secret Message" ]; then \
+		echo "✓ CTR-256 Test PASSED"; \
+	else \
+		echo "✗ CTR-256 Test FAILED"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "=== All Tests PASSED ==="

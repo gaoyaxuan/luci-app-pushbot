@@ -59,23 +59,29 @@ jobs:
         sdk:
           - openwrt-24.10
           - SNAPSHOT
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          path: openwrt-feed/luci-app-pushbot
-
-      - name: Build Package
+      - name: Prepare Feed Directory
+        run: |
+          mkdir -p openwrt-feed/luci-app-pushbot
+          mkdir -p openwrt-feed/aes-tool
+          
+          # 复制 luci-app-pushbot
+          cp -r luci-app-pushbot/* openwrt-feed/luci-app-pushbot/
+          
+          # 复制 aes-tool
+          cp -r aes-tool/* openwrt-feed/aes-tool/
+      - name: Build Packages
         uses: sbwml/openwrt-gh-action-sdk@go1.25
         env:
           ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
           FEED_DIR: ${{ github.workspace }}/openwrt-feed
           FEEDNAME: packages_ci
-          PACKAGES: luci-app-pushbot
+          PACKAGES: aes-tool luci-app-pushbot  # 编译两个包
           NO_REFRESH_CHECK: true
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -84,7 +90,6 @@ jobs:
             bin/packages/${{ matrix.arch }}/packages_ci/*.apk
             bin/packages/riscv64_generic/packages_ci/*.apk
             bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
-
       - name: Create compress files
         continue-on-error: true
         run: |
@@ -95,7 +100,6 @@ jobs:
             find "bin/packages/${{ matrix.arch }}/packages_ci" -type d -empty -delete
             tar -zcvf ${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
           fi
-
       - name: Upload packages
         uses: ncipollo/release-action@v1
         with:
@@ -118,10 +122,10 @@ jobs:
 
             ```bash
             # IPK 安装（旧版 OpenWrt）
-            opkg install luci-app-pushbot_*.ipk
+            opkg install luci-app-pushbot-*.ipk  aes-tool-*.ipk
 
             # APK 安装（OpenWrt 24.10+）
-            apk add --allow-untrusted luci-app-pushbot_*.apk
+            apk add --allow-untrusted luci-app-pushbot-*.apk aes-tool-*.apk
             ```
 
             ### 🏗️ 支持的架构 (共64个包)
