@@ -128,7 +128,7 @@ jobs:
             apk add --allow-untrusted luci-app-pushbot-*.apk aes-tool-*.apk
             ```
 
-            ### 🏗️ 支持的架构 (共64个包)
+            ### 🏗️ 支持的架构
 
             #### 🖥️ x86 架构
             - `x86_64` - 64位 x86 设备
