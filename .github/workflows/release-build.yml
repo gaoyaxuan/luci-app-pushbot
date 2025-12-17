@@ -71,9 +71,12 @@ jobs:
           
           # 复制 luci-app-pushbot
           cp -r luci-app-pushbot/* openwrt-feed/luci-app-pushbot/
+          chmod +x openwrt-feed/luci-app-pushbot/root/etc/init.d/pushbot || true
+          chmod +x openwrt-feed/luci-app-pushbot/root/usr/bin/pushbot/pushbot || true
           
           # 复制 aes-tool
           cp -r aes-tool/* openwrt-feed/aes-tool/
+
       - name: Build Packages
         uses: sbwml/openwrt-gh-action-sdk@go1.25
         env:
