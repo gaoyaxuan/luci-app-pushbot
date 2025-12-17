@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aes-tool
-PKG_VERSION:=1.0
+PKG_VERSION:=1.1
 PKG_RELEASE:=1
 
 include $(INCLUDE_DIR)/package.mk
@@ -29,17 +29,17 @@ endef
 define Build/Compile
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \
 		-DUSE_MBEDTLS_HEADERS \
-		-o $(PKG_BUILD_DIR)/aes-crypto \
+		-o $(PKG_BUILD_DIR)/aes-tool \
 		$(PKG_BUILD_DIR)/main.c \
 		$(PKG_BUILD_DIR)/aes_crypto.c \
 		-lmbedcrypto
 
-	$(TARGET_CROSS)strip $(PKG_BUILD_DIR)/aes-crypto
+	$(TARGET_CROSS)strip $(PKG_BUILD_DIR)/aes-tool
 endef
 
 define Package/aes-tool/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aes-crypto $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aes-tool $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,aes-tool))
