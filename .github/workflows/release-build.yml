@@ -95,10 +95,10 @@ jobs:
         run: |
           if [ "${{ matrix.arch }}" = "riscv64_riscv64" ] && [ "${{ matrix.sdk }}" = "SNAPSHOT" ]; then
             find "bin/packages/riscv64_generic/packages_ci" -type d -empty -delete
-            tar -zcvf ${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/riscv64_generic/ packages_ci
+            tar -zcvf luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/riscv64_generic/ packages_ci
           else
             find "bin/packages/${{ matrix.arch }}/packages_ci" -type d -empty -delete
-            tar -zcvf ${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
+            tar -zcvf luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
           fi
       - name: Upload packages
         uses: ncipollo/release-action@v1
@@ -108,7 +108,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           prerelease: false
-          artifacts: "${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
+          artifacts: "luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
           body: |
             ## 🎉 LuCI App Pushbot ${{ github.ref_name }}
 
