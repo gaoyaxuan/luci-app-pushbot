@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-pushbot
-PKG_VERSION:=3.8.7
+PKG_VERSION:=3.8.8
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=tty228 <tty228@yeah.net>  zzsj0928
@@ -17,8 +17,11 @@ define Package/$(PKG_NAME)/install
     $(INSTALL_DIR) $(1)/usr/bin
 
     # 安装可执行文件
-    $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/pushbot $(1)/usr/bin/pushbot/
-    $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot $(1)/etc/init.d/
+    $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/pushbot  $(1)/usr/bin/pushbot/pushbot
+    $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot  $(1)/etc/init.d/pushbot
+
+    chmod 0755 $(1)/usr/bin/pushbot/pushbot
+    chmod 0755 $(1)/etc/init.d/pushbot
 endef
 
 define Package/$(PKG_NAME)/conffiles
