@@ -6,6 +6,20 @@ USE_PROCD=1
 
 dir="/tmp/pushbot/"
 
+remove_pushbot_cron() {
+	del_cron() {
+		crontab -l  2>/dev/null | grep -v "pushbot" | crontab -
+	}
+	re_cron() {
+  		/etc/init.d/cron stop
+  		/etc/init.d/cron start
+  	}
+  del_cron
+  re_cron
+  return 0
+}
+
+
 start_service() {
     enable_value=$(uci get pushbot.pushbot.pushbot_enable 2>/dev/null || echo "0")
 
@@ -43,23 +57,12 @@ reload_service() {
 
 stop_service() {
     logger -t pushbot "stopping pushbot"
-
-    local pid=$(pgrep -f "/usr/bin/pushbot/pushbot")
-
-    if [ -n "$pid" ]; then
-        kill -TERM $pid 2>/dev/null
-
-        local timeout=8
-        while [ $timeout -gt 0 ] && kill -0 $pid 2>/dev/null; do
-            sleep 1
-            timeout=$((timeout - 1))
-        done
-
-        if kill -0 $pid 2>/dev/null; then
-            kill -9 $pid 2>/dev/null
-        fi
-    fi
-
+    pgrep -f "/usr/bin/pushbot/pushbot" | xargs kill -9
+    remove_pushbot_cron
+    logger -t pushbot "clean pushbot cron"
+    # 清理锁
+    rm -f /tmp/pushbot/pushbot_daemon_running.lock
+    logger -t pushbot "remove pushbot daemon running lock"
     logger -t pushbot "pushbot stopped"
 }
 

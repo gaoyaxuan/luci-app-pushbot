@@ -143,7 +143,6 @@ a:value("cbc", "CBC (推荐)")
 a:value("ecb", "ECB (不安全/无IV)")
 a:value("gcm", "GCM")
 a.default = "cbc"
-a.description = translate("注意：GCM模式在当前系统中不可用")
 
 -- Key 输入框
 a = s:taboption("basic", Value, "bark_encryption_key", translate('Key (密钥)'),

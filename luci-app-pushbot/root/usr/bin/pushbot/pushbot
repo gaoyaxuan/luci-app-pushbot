@@ -172,7 +172,7 @@ function diy_send(){
       if [ "${bark_encryption_enable}" = "1" ]; then
         # ========== 加密分支（使用 aes-tool）==========
         # 删除 device_keys，只保留推送内容
-        jq 'del(.device_keys)' "$rawFile" > "$contentFile"
+        jq -c 'del(.device_keys)' "$rawFile" > "$contentFile"
         # 读取要加密的内容
         local plaintext=$(cat "$contentFile")
 
@@ -189,18 +189,19 @@ function diy_send(){
         fi
         # 加密
         temp_cipher=$(mktemp)
-        /usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_hex}" "${contentFile}"   "${temp_cipher}"--ascii 2>&1
+        execLog=$(/usr/bin/aes-tool   enc   "${bark_encryption_mode}"   "${bark_encryption_algo}"   "${bark_encryption_key}" "${iv_hex}" "${contentFile}"   "${temp_cipher}"  --ascii 2>&1)
         local encrypt_status=$?
         # 执行加密
         local ciphertext=$(cat "$temp_cipher")
+        rm -f "$temp_cipher"
         # 检查加密结果
         if [ $encrypt_status -ne 0 ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密命令失败 (退出码: ${encrypt_status})" >> ${logfile}
-          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】错误信息: ${ciphertext}" >> ${logfile}
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】错误信息: ${execLog}" >> ${logfile}
           rm -f "$contentFile" "$finalJsonFile"
           return 1
         fi
-        rm -f "$temp_cipher"
+
 
         if [ -z "$ciphertext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密结果为空" >> ${logfile}
@@ -609,8 +610,6 @@ add_pushbot_cron() {
 
 
 remove_pushbot_cron() {
-    # 如果启用，直接退出
-  [ "$pushbot_enable" = "1" ] && return 1
 	del_cron() {
 		crontab -l  2>/dev/null | grep -v "pushbot" | crontab -
 	}
@@ -1357,35 +1356,53 @@ function send(){
 read_config
 deltemp
 # ========== 参数调用 ==========
-if [ "$1" ]; then
-    case "$1" in
-        send)   send ;;
-        soc)    echo $(soc_temp) > ${dir}soc_tmp ;;
-        client) get_client ;;
-        test)   send test ;;
-        removeCron)   remove_pushbot_cron ;;
-        daemon)
-            ;;
-        *)
-            echo "未知参数: $1"
-            echo "用法: $0 {send|soc|client|test|daemon}"
-            exit 1
-            ;;
-    esac
-    # 命令执行完退出
-    [ "$1" != "daemon" ] && exit 0
-fi
+case "$1" in
+    send)   send ;;
+    soc)    echo $(soc_temp) > ${dir}soc_tmp ;;
+    client) get_client ;;
+    test)   send test ;;
+#        removeCron)   remove_pushbot_cron ;;
+    daemon)
+        ;;
+    *)
+        echo "未知参数: $1"
+        echo "用法: $0 {send|soc|client|test|daemon}"
+        exit 1
+        ;;
+esac
+# 命令执行完退出
+[ "$1" != "daemon" ] && exit 0
 
 # 1. 互斥锁（确保只有一个守护进程）
-local lock_file="/tmp/pushbot/pushbot_daemon_running.lock"
-mkdir -p /tmp/pushbot
+lock_file="/tmp/pushbot/pushbot_daemon_running.lock"
 exec 200>"$lock_file"
 if ! flock -n 200; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [错误] 守护进程已在运行" >&2
     logger -t pushbot "守护进程已在运行，拒绝重复启动"
     exit 1
 fi
-trap "remove_pushbot_cron;flock -u 200; rm -f '$lock_file'" EXIT
+logger -t pushbot "守护进程启动成功"
+trapCleanup() {
+#    trap '' TERM
+#    logger -t pushbot "正在终止所有子进程..."
+    # 向当前进程组发送 TERM 信号。
+    # 这里的 0 代表当前进程组 ID。
+#    kill -TERM 0 2>/dev/null
+    #关闭管道
+    exec 5>&-
+    # flock -u 200 其实是不必要的，因为进程退出时 FD 会自动关闭，锁自动释放
+    # 但保留也无妨，显式比隐式好
+    flock -u 200
+    rm -f "$lock_file"
+    remove_pushbot_cron
+    logger -t pushbot "守护进程已停止，清理锁文件完成"
+}
+#捕获 EXIT(正常退出), INT(Ctrl+C), TERM(kill默认信号)
+trap trapCleanup EXIT
+# 收到 Ctrl+C 时，直接 exit。
+# exit 命令执行时，会自动触发上面的 trap cleanup EXIT
+trap "exit 1" INT TERM
+
 # 添加定时任务
 add_pushbot_cron
 
