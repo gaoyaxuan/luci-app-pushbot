@@ -8,7 +8,7 @@ local ifaces = sys.net:devices()
 
 m=Map("pushbot",translate("PushBot"),
 translate("「全能推送」，英文名「PushBot」，是一款从服务器推送报警信息和日志到各平台的工具。<br>支持钉钉推送，企业微信推送，PushPlus推送。<br>本插件由tty228/luci-app-serverchan创建，然后七年修改为全能推送自用。<br /><br />如果你在使用中遇到问题，请到这里提交：")
-.. [[<a href="https://github.com/zzsj0928/luci-app-pushbot" target="_blank">]]
+.. [[<a href="https://github.com/gaoyaxuan/luci-app-pushbot" target="_blank">]]
 .. translate("github 项目地址")
 .. [[</a>]]
 )
@@ -30,11 +30,11 @@ a.rmempty = true
 
 function a.write(self, section, value)
     if value == "1" then
-        luci.sys.call("/etc/init.d/pushbot enable >/dev/null")
-        luci.sys.call("/etc/init.d/pushbot start >/dev/null")
+        luci.sys.call("/etc/init.d/pushbot enable >/dev/null 2>&1")
+        luci.sys.call("/etc/init.d/pushbot start >/dev/null 2>&1")
     else
-        luci.sys.call("/etc/init.d/pushbot stop >/dev/null")
-        luci.sys.call("/etc/init.d/pushbot disable >/dev/null")
+        luci.sys.call("/etc/init.d/pushbot stop >/dev/null 2>&1")
+        luci.sys.call("/etc/init.d/pushbot disable >/dev/null 2>&1")
     end
     return Flag.write(self, section, value)
 end

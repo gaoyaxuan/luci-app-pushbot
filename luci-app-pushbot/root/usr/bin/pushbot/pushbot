@@ -622,36 +622,56 @@ function pushbot_first(){
 	wait
 }
 # 创建计划任务
-function pushbot_cron(){
-	function del_cron(){
-		( echo `crontab -l 2>/dev/null`|grep -q "pushbot" ) && crontab -l > conf && sed -i "/pushbot/d" conf && crontab conf && rm -f conf >/dev/null 2>&1
-	}
-	function re_cron(){
-		/etc/init.d/cron stop
-		/etc/init.d/cron start
-	}
-	del_cron
-	if [ -z "$pushbot_enable" ]; then
-		re_cron
-		return
-	fi
+add_pushbot_cron() {
 
-	# 重置流量
-	if [ ! -z "$reset_regularly" ] && [ "$reset_regularly" -eq "1" ]; then
-		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
-		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage6.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
-	fi
-	[ ! -z "$regular_time_2" ] && local regular_time_2=",${regular_time_2}"
-	[ ! -z "$regular_time_3" ] && local regular_time_3=",${regular_time_3}"
-	# 定时发送
-	if [ ! -z "$regular_time" ] || [ ! -z "$regular_time_2" ] || [ ! -z "$regular_time_3" ]; then
-		crontab -l 2>/dev/null > conf && echo -e "0 $regular_time$regular_time_2$regular_time_3 * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
-	# 间隔发送
-	elif [ ! -z "$interval_time" ]; then
-		crontab -l 2>/dev/null > conf && echo -e "0 */$interval_time * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
-	fi
-	re_cron
+    del_cron() {
+      crontab -l  2>/dev/null | grep -v "pushbot" | crontab -
+    }
+    re_cron() {
+        /etc/init.d/cron stop
+        /etc/init.d/cron start
+    }
+  	del_cron
+  	if [ "$pushbot_enable" != "1"  ]; then
+  		re_cron
+  		return
+  	fi
+
+  	# 重置流量
+  	if [ ! -z "$reset_regularly" ] && [ "$reset_regularly" -eq "1" ]; then
+  		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage6.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  	fi
+  	[ ! -z "$regular_time_2" ] && local regular_time_2=",${regular_time_2}"
+  	[ ! -z "$regular_time_3" ] && local regular_time_3=",${regular_time_3}"
+  	# 定时发送
+  	if [ ! -z "$regular_time" ] || [ ! -z "$regular_time_2" ] || [ ! -z "$regular_time_3" ]; then
+  		crontab -l 2>/dev/null > conf && echo -e "0 $regular_time$regular_time_2$regular_time_3 * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  	# 间隔发送
+  	elif [ ! -z "$interval_time" ]; then
+  		crontab -l 2>/dev/null > conf && echo -e "0 */$interval_time * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  	fi
+  	re_cron
+	  echo "`date "+%Y-%m-%d %H:%M:%S"` Cron 添加成功" >> ${logfile}
 }
+
+
+remove_pushbot_cron() {
+    # 如果启用，直接退出
+  [ "$pushbot_enable" = "1" ] && return 1
+	del_cron() {
+		crontab -l  2>/dev/null | grep -v "pushbot" | crontab -
+	}
+	re_cron() {
+  		/etc/init.d/cron stop
+  		/etc/init.d/cron start
+  	}
+  del_cron
+  re_cron
+  return 0
+}
+
+
 
 # 免打扰检测
 function pushbot_disturb(){
@@ -1384,7 +1404,38 @@ function send(){
 # 初始化
 read_config
 deltemp
-pushbot_cron
+# ========== 参数调用 ==========
+if [ "$1" ]; then
+    case "$1" in
+        send)   send ;;
+        soc)    echo $(soc_temp) > ${dir}soc_tmp ;;
+        client) get_client ;;
+        test)   send test ;;
+        removeCron)   remove_pushbot_cron ;;
+        daemon)
+            ;;
+        *)
+            echo "未知参数: $1"
+            echo "用法: $0 {send|soc|client|test|daemon}"
+            exit 1
+            ;;
+    esac
+    # 命令执行完退出
+    [ "$1" != "daemon" ] && exit 0
+fi
+
+# 1. 互斥锁（确保只有一个守护进程）
+local lock_file="/tmp/pushbot/pushbot_daemon_running.lock"
+mkdir -p /tmp/pushbot
+exec 200>"$lock_file"
+if ! flock -n 200; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [错误] 守护进程已在运行" >&2
+    logger -t pushbot "守护进程已在运行，拒绝重复启动"
+    exit 1
+fi
+trap "remove_pushbot_cron;flock -u 200; rm -f '$lock_file'" EXIT
+# 添加定时任务
+add_pushbot_cron
 
 # 限制并发进程
 [ -z "$thread_num" ] || [ "$thread_num" -eq "0" ] && thread_num=5
@@ -1395,15 +1446,6 @@ for i in `seq 1 $thread_num`; do
 	echo >&5
 done
 unset i
-
-# 启动参数
-if [ "$1" ] ;then
-	[ $1 == "send" ] && send
-	[ $1 == "soc" ] && echo `soc_temp` > ${dir}soc_tmp
-	[ $1 == "client" ] && get_client
-	[ $1 == "test" ] && send test
-	exit
-fi
 
 # 载入在线设备
 pushbot_init;[ $? -eq 1 ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】读取设置出错，请检查设置项 " >> ${logfile} && exit
