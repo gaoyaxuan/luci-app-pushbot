@@ -12,14 +12,18 @@ LUCI_DEPENDS:=+iputils-arping +curl +jq +aes-tool
 
 
 define Package/$(PKG_NAME)/install
-    # 创建必要的目录
     $(INSTALL_DIR) $(1)/etc/init.d
     $(INSTALL_DIR) $(1)/usr/bin
-    # 安装可执行文件
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/pushbot  $(1)/usr/bin/pushbot/pushbot
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot  $(1)/etc/init.d/pushbot
 endef
 
+
+define Package/$(PKG_NAME)/postinst
+#!/bin/sh
+    chmod +x /usr/bin/pushbot/pushbot
+    chmod +x /etc/init.d/pushbot
+endef
 
 define Package/$(PKG_NAME)/conffiles
 /etc/config/pushbot
