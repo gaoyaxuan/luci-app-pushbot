@@ -554,6 +554,11 @@ a.default=1
 a:depends("crontab","1")
 a:depends("crontab","2")
 
+a=s:taboption("crontab", Flag,"router_storage",translate("存储信息"))
+a.default=1
+a:depends("crontab","1")
+a:depends("crontab","2")
+
 a=s:taboption("crontab", Value,"google_check_timeout",translate("全球互联检测超时时间"))
 a.rmempty = true
 a.optional = false

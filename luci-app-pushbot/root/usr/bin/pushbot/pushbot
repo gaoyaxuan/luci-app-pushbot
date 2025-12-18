@@ -9,15 +9,10 @@ function get_config(){
 
 function convert_tokens_to_json_array() {
     local tokens="$1"
-
-    # 如果为空，返回空数组
     if [ -z "$tokens" ]; then
         echo "[]"
         return
     fi
-
-    # 将空格分隔的字符串转换为JSON数组
-    # "token1 token2 token3" -> ["token1","token2","token3"]
     local json_array=$(echo "$tokens" | awk '{
         printf "["
         for(i=1; i<=NF; i++) {
@@ -26,7 +21,6 @@ function convert_tokens_to_json_array() {
         }
         printf "]"
     }')
-
     echo "$json_array"
 }
 
@@ -55,6 +49,25 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
 EOF
 }
 
+
+function normalize_url() {
+    local url="$1"
+    # 去除首尾空格
+    url=$(echo "$url" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    # 如果为空则返回空
+    if [ -z "$url" ]; then
+        echo ""
+        return
+    fi
+    # 检查是否以http://或https://开头
+    if [[ ! $url =~ ^https?:// ]]; then
+        url="https://$url"
+    fi
+    # 去除末尾的/
+    url=$(echo "$url" | sed 's#/*$##')
+    echo "$url"
+}
+
 # 初始化设置信息
 function read_config(){
 	get_config "pushbot_enable" "lite_enable" "device_name" "sleeptime" "oui_dir" "oui_data" "reset_regularly" "debuglevel" "device_aliases" \
@@ -65,8 +78,9 @@ function read_config(){
 	"pushbot_sheep" "starttime" "endtime" "pushbot_whitelist" "pushbot_blacklist" "pushbot_interface" "MAC_online_list" "MAC_offline_list" \
 	"up_timeout" "down_timeout" "timeout_retry_count" "thread_num" "soc_code" "pve_host" "pve_port"\
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
-	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv" "bark_srv_enable" \
-	"bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon" "bark_icon_enable" "bark_level"
+	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv"  \
+	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
+	"router_storage"
 
   if command -v opkg >/dev/null 2>&1; then
     	for str_version in "wrtbwmon" "iputils-arping" "curl" "iw"; do
@@ -167,6 +181,7 @@ function diy_send(){
       # 3. 定义临时文件
       local contentFile="${rawFile}_content"
       local finalJsonFile="${rawFile}_final"
+      bark_srv=$(normalize_url "${bark_srv}")
       local bark_encryption_url="${bark_srv}/push"
       # 判断是否启用加密
       if [ "${bark_encryption_enable}" = "1" ]; then
@@ -175,7 +190,6 @@ function diy_send(){
         jq -c 'del(.device_keys)' "$rawFile" > "$contentFile"
         # 读取要加密的内容
         local plaintext=$(cat "$contentFile")
-
         # 验证内容不为空
         if [ -z "$plaintext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密内容为空" >> ${logfile}
@@ -201,7 +215,6 @@ function diy_send(){
           rm -f "$contentFile" "$finalJsonFile"
           return 1
         fi
-
 
         if [ -z "$ciphertext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密结果为空" >> ${logfile}
@@ -229,16 +242,11 @@ function diy_send(){
           return 1
         }
       fi
-      # 4. 发送请求
-      local response
-      response=$(curl -s -w "\n%{http_code}" -A "$(get_random_user_agent)" \
+      curl -s  -A "$(get_random_user_agent)" \
            -L --post301 --post302 -X POST \
            -H "Content-Type: application/json; charset=utf-8" \
            -d "@${finalJsonFile}" \
-           "${bark_encryption_url}")
-
-      local http_code=$(echo "$response" | tail -n1)
-      local body=$(echo "$response" | sed '$d')
+           "${bark_encryption_url}"
       # 5. 清理临时文件
       rm -f "$contentFile" "$finalJsonFile"
 
@@ -1253,6 +1261,28 @@ function login_send(){
 
 # 添加黑名单
 function add_ip_black(){
+  	if ! command -v ipset >/dev/null 2>&1; then
+  		echo "------[拉黑功能失效 Error]------"  >> ${logfile}
+  		local install_cmd=""
+  		# 检测包管理器类型
+  		if command -v apk >/dev/null 2>&1; then
+  			# OpenWrt 新版 (Alpine Package Keeper)
+  			install_cmd="apk add ipset kmod-ipt-ipset"
+  		elif command -v opkg >/dev/null 2>&1; then
+  			# OpenWrt 旧版
+  			install_cmd="opkg update && opkg install ipset kmod-ipt-ipset"
+  		else
+  			install_cmd="请手动安装 ipset kmod-ipt-ipset 组件"
+  		fi
+
+  		# 写入日志 (同时输出到终端和系统日志)
+  		echo "缺少 ipset 命令，无法添加黑名单！"  >> ${logfile}
+  		echo "请执行以下命令安装: ${install_cmd}"  >> ${logfile}
+  		return 1
+  	fi
+  	# 白名单ip直接跳过
+  echo "$ip_white_list"|grep -w -q "$login_ip" && return 1
+
 	[ -f "${ip_blacklist_path}" ] && local logrow=$(grep -c "" ${ip_blacklist_path}) || local logrow="0"
 	[ ! -f "${ip_blacklist_path}" ] && local logrow="0"
 	[ ! -z "$web_login_black" ] && [ "$web_login_black" -eq "0" ] || [ -z "$web_login_black" ] && local logrow="0"
@@ -1265,7 +1295,7 @@ function add_ip_black(){
 		return
 	fi
 	
-	ipset list ip_blacklist >/dev/null 2>&1 || ipset create ip_blacklist hash:ip timeout ${ip_black_timeout} >/dev/null 2>&1
+	ipset list ip_blacklist >/dev/null 2>&1 || ipset create ip_blacklist hash:ip timeout ${ip_black_timeout:-3600} >/dev/null 2>&1
 	iptables -C INPUT -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1 || iptables -I INPUT -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1
 	echo "$1" >> ${ip_blacklist_path}
 	for ip_black in `cat ${ip_blacklist_path}`; do
@@ -1275,10 +1305,384 @@ function add_ip_black(){
 	ipset list ip_blacklist|grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" > ${ip_blacklist_path}
 }
 
+
+# ==================== 存储信息获取====================
+get_storage_info() {
+    local result=""
+    local tmpfile="/tmp/df_storage_$$.tmp"
+
+    # 检测可用工具
+    local has_smart=0
+    local has_hdparm=0
+    command -v smartctl >/dev/null 2>&1 && has_smart=1
+    command -v hdparm >/dev/null 2>&1 && has_hdparm=1
+
+    # 获取 df 信息
+    df -k 2>/dev/null | grep "^/dev/" > "$tmpfile"
+
+    # 提取唯一的物理磁盘
+    local disk_tmp="/tmp/unique_disks_$$.tmp"
+    awk '{print $1}' "$tmpfile" | sed 's|/dev/||' | \
+        sed -E 's/p?[0-9]+$//' | sed 's/nvme[0-9]+n[0-9]+p[0-9]+$/nvme&/;s/p[0-9]+$//' | \
+        sort -u > "$disk_tmp"
+
+    # 遍历每个磁盘
+    for disk in $(cat "$disk_tmp"); do
+        # 跳过虚拟设备
+        case "$disk" in
+            loop*|ram*|dm-*|sr*|zram*) continue ;;
+        esac
+
+        # ========== 基本信息 ==========
+
+        local model_name=""
+        local serial=""
+
+        # 从 /sys 读取型号
+        if [ -f "/sys/block/${disk}/device/model" ]; then
+            model_name=$(cat "/sys/block/${disk}/device/model" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        fi
+
+        # 用 smartctl 获取更详细信息
+        if [ "$has_smart" = "1" ] && [ -z "$model_name" ]; then
+            local smart_info_tmp="/tmp/smart_info_$$.tmp"
+            smartctl -i "/dev/$disk" 2>/dev/null > "$smart_info_tmp"
+
+            if [ -s "$smart_info_tmp" ]; then
+                model_name=$(grep "Device Model:\|Model Number:\|Product:" "$smart_info_tmp" | head -n1 | awk -F: '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                serial=$(grep "Serial Number:" "$smart_info_tmp" | awk -F: '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c 20)
+            fi
+            rm -f "$smart_info_tmp"
+        fi
+
+        [ -z "$model_name" ] && model_name="$disk"
+
+        # 截断过长的名称
+        local display_name="$model_name"
+        if [ ${#model_name} -gt 30 ]; then
+            display_name="${model_name:0:27}..."
+        fi
+
+        # ========== 容量信息 ==========
+
+        local total_size=""
+        if [ -f "/sys/block/${disk}/size" ]; then
+            local sectors=$(cat "/sys/block/${disk}/size" 2>/dev/null)
+            if [ ! -z "$sectors" ] && [ "$sectors" -gt 0 ] 2>/dev/null; then
+                # 跳过太小的设备（< 100MB）
+                [ "$sectors" -lt 204800 ] 2>/dev/null && continue
+                local bytes=$((sectors * 512))
+                total_size=$(convert_bytes "$bytes")
+            fi
+        fi
+
+        # ========== 分区和挂载信息 ==========
+
+        local partition_info=""
+        local partition_count=$(grep -c "^/dev/${disk}" "$tmpfile")
+
+        if [ "$partition_count" -eq 0 ]; then
+            partition_info="未挂载"
+        else
+            local part_details=""
+            local IFS=$'\n'
+            for df_line in $(grep "^/dev/${disk}" "$tmpfile"); do
+                local mount_point=$(echo "$df_line" | awk '{print $6}')
+                part_details="${part_details}${mount_point}, "
+            done
+
+            partition_info=$(echo "$part_details" | sed 's/, $//')
+
+            if [ "$partition_count" -gt 3 ]; then
+                partition_info=$(echo "$partition_info" | awk -F', ' '{print $1", "$2", "$3}')
+                partition_info="${partition_info}... 等${partition_count}个"
+            fi
+        fi
+
+        # ========== 使用情况统计 ==========
+
+        local total_used_kb=0
+        local total_capacity_kb=0
+
+        for df_line in $(grep "^/dev/${disk}" "$tmpfile"); do
+            local kb_size=$(echo "$df_line" | awk '{print $2}')
+            local kb_used=$(echo "$df_line" | awk '{print $3}')
+
+            [ ! -z "$kb_size" ] && total_capacity_kb=$((total_capacity_kb + kb_size))
+            [ ! -z "$kb_used" ] && total_used_kb=$((total_used_kb + kb_used))
+        done
+
+        local usage_percent="0"
+        if [ "$total_capacity_kb" -gt 0 ] 2>/dev/null; then
+            usage_percent=$((total_used_kb * 100 / total_capacity_kb))
+        fi
+
+        local used_human=$(convert_kb "$total_used_kb")
+        local capacity_human=$(convert_kb "$total_capacity_kb")
+
+        # ========== SMART 信息获取 ==========
+
+        local smart_status=""
+        local smart_temp=""
+        local power_on_hours=""
+        local power_cycle=""
+        local device_type=""
+        local is_usb=0
+
+        if [ "$has_smart" = "1" ]; then
+            local smart_tmp="/tmp/smart_$$.tmp"
+            local smart_success=0
+
+            # 检测设备类型
+            case "$disk" in
+                nvme*)
+                    # NVMe 设备
+                    device_type="nvme"
+                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                    [ -s "$smart_tmp" ] && smart_success=1
+                    ;;
+                sd*)
+                    # SATA/SAS/USB 设备
+                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+
+                    # 检查是否为 USB 设备
+                    if grep -q "Unknown USB bridge\|specify device type" "$smart_tmp" 2>/dev/null; then
+                        is_usb=1
+                        # 尝试不同的 USB 接口类型
+                        for usb_type in sat usbcypress usbjmicron usbprolific usbsunplus; do
+                            smartctl -d $usb_type -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                            if [ -s "$smart_tmp" ] && ! grep -q "Unknown USB bridge\|specify device type" "$smart_tmp"; then
+                                device_type="usb"
+                                smart_success=1
+                                break
+                            fi
+                        done
+                    else
+                        [ -s "$smart_tmp" ] && smart_success=1
+                        device_type="ata"
+                    fi
+                    ;;
+                *)
+                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                    [ -s "$smart_tmp" ] && smart_success=1
+                    ;;
+            esac
+
+            # 解析 SMART 数据
+            if [ "$smart_success" = "1" ] && [ -s "$smart_tmp" ]; then
+                # 健康状态
+                local health=$(grep "overall-health\|Health Status" "$smart_tmp" | awk '{print $NF}')
+                case "$health" in
+                    PASSED|OK)
+                        smart_status="${font_green2}健康${font_end2}"
+                        ;;
+                    FAILED*|FAILING*)
+                        smart_status="${font_red2}故障${font_end2}"
+                        ;;
+                    *)
+                        [ ! -z "$health" ] && smart_status="$health"
+                        ;;
+                esac
+
+                # 温度获取
+                if [ "$device_type" = "nvme" ]; then
+                    smart_temp=$(grep "^Temperature:" "$smart_tmp" | awk '{print $2}')
+                else
+                    smart_temp=$(grep "Temperature_Celsius\|Airflow_Temperature" "$smart_tmp" | awk '{print $10}' | head -n1)
+                    if [ -z "$smart_temp" ]; then
+                        smart_temp=$(grep "Temperature" "$smart_tmp" | grep -oE '[0-9]+ Celsius' | grep -oE '[0-9]+' | head -n1)
+                    fi
+                fi
+
+                # 通电时间
+                if [ "$device_type" = "nvme" ]; then
+                    power_on_hours=$(grep "^Power On Hours:" "$smart_tmp" | awk '{print $4}' | tr -d ',')
+                else
+                    power_on_hours=$(grep "Power_On_Hours" "$smart_tmp" | awk '{print $10}')
+                    if [ -z "$power_on_hours" ]; then
+                        power_on_hours=$(grep "Power_On_Hours" "$smart_tmp" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $i > 0) print $i}' | tail -n1)
+                    fi
+                fi
+
+                # 通电次数
+                if [ "$device_type" = "nvme" ]; then
+                    power_cycle=$(grep "^Power Cycles:" "$smart_tmp" | awk '{print $3}' | tr -d ',')
+                else
+                    power_cycle=$(grep "Power_Cycle_Count" "$smart_tmp" | awk '{print $10}')
+                    if [ -z "$power_cycle" ]; then
+                        power_cycle=$(grep "Power_Cycle_Count" "$smart_tmp" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $i > 0) print $i}' | tail -n1)
+                    fi
+                fi
+            fi
+
+            rm -f "$smart_tmp"
+        fi
+
+        # ========== 设备类型判断 ==========
+
+        local type_info=""
+
+        # 判断是否为 SSD
+        if [ -f "/sys/block/${disk}/queue/rotational" ]; then
+            local is_rotational=$(cat "/sys/block/${disk}/queue/rotational" 2>/dev/null)
+            if [ "$is_rotational" = "0" ]; then
+                type_info="SSD"
+            elif [ "$is_rotational" = "1" ]; then
+                type_info="HDD"
+                # 尝试获取转速
+                if [ "$has_smart" = "1" ]; then
+                    local rpm=$(smartctl -i "/dev/$disk" 2>/dev/null | grep "Rotation Rate" | awk -F: '{print $2}' | sed 's/^[[:space:]]*//' | grep -oE '[0-9]+ RPM')
+                    [ ! -z "$rpm" ] && type_info="HDD ${rpm}"
+                fi
+            fi
+        fi
+
+        # 如果是 USB 设备，添加 USB 标识
+        if [ "$is_usb" = "1" ]; then
+            if [ ! -z "$type_info" ]; then
+                type_info="${type_info}(USB)"
+            else
+                type_info="USB"
+            fi
+        fi
+
+        # ========== 拼接输出 ==========
+
+        # 空一行（如果不是第一个设备）
+        [ ! -z "$result" ] && result="${result}${str_linefeed}"
+
+        # 第一行：设备名称
+        result="${result}${str_linefeed}${str_tab}${font_green2}【${display_name}】${font_end2}"
+
+        # 第二行：类型
+        if [ ! -z "$type_info" ]; then
+            result="${result}${str_linefeed}${str_tab}类型: ${type_info}"
+        fi
+
+        # 第三行：挂载点
+        result="${result}${str_linefeed}${str_tab}挂载: ${partition_info}"
+
+        # 第四行：容量使用情况
+        if [ "$partition_count" -gt 0 ]; then
+            result="${result}${str_linefeed}${str_tab}容量: ${used_human}/${capacity_human} ${usage_percent}%"
+        else
+            result="${result}${str_linefeed}${str_tab}容量: ${total_size}"
+        fi
+
+        # 第五行：状态和温度
+        local status_line=""
+        if [ ! -z "$smart_status" ]; then
+            status_line="状态: ${smart_status}"
+        fi
+
+        if [ ! -z "$smart_temp" ] && [ "$smart_temp" -ge 0 ] 2>/dev/null && [ "$smart_temp" -le 200 ] 2>/dev/null; then
+            if [ ! -z "$status_line" ]; then
+                status_line="${status_line}  ${smart_temp}℃"
+            else
+                status_line="温度: ${smart_temp}℃"
+            fi
+        fi
+
+        if [ ! -z "$status_line" ]; then
+            result="${result}${str_linefeed}${str_tab}${status_line}"
+        fi
+
+        # 第六行：运行时长和通电次数
+        local runtime_line=""
+
+        if [ ! -z "$power_on_hours" ] && [ "$power_on_hours" -gt 0 ] 2>/dev/null; then
+            local days=$((power_on_hours / 24))
+            local hours=$((power_on_hours % 24))
+            runtime_line="运行: ${days}天${hours}小时"
+        fi
+
+        if [ ! -z "$power_cycle" ] && [ "$power_cycle" -gt 0 ] 2>/dev/null; then
+            if [ ! -z "$runtime_line" ]; then
+                runtime_line="${runtime_line} | 通电 ${power_cycle}次"
+            else
+                runtime_line="通电: ${power_cycle}次"
+            fi
+        fi
+
+        if [ ! -z "$runtime_line" ]; then
+            result="${result}${str_linefeed}${str_tab}${runtime_line}"
+        fi
+
+    done
+
+    rm -f "$tmpfile" "$disk_tmp"
+    echo "$result"
+}
+
+convert_bytes() {
+    local bytes="$1"
+
+    if [ -z "$bytes" ] || [ "$bytes" -eq 0 ] 2>/dev/null; then
+        echo "0B"
+        return
+    fi
+
+    case "$bytes" in
+        ''|*[!0-9]*)
+            echo "0B"
+            return
+            ;;
+    esac
+
+    local tb=1099511627776
+    local gb=1073741824
+    local mb=1048576
+    local kb=1024
+
+    if [ "$bytes" -ge "$tb" ]; then
+        local int=$((bytes / tb))
+        local remainder=$((bytes % tb))
+        local dec=$((remainder * 100 / tb))
+        printf "%d.%02dT" "$int" "$dec"
+    elif [ "$bytes" -ge "$gb" ]; then
+        local int=$((bytes / gb))
+        local remainder=$((bytes % gb))
+        local dec=$((remainder * 100 / gb))
+        printf "%d.%02dG" "$int" "$dec"
+    elif [ "$bytes" -ge "$mb" ]; then
+        local int=$((bytes / mb))
+        local remainder=$((bytes % mb))
+        local dec=$((remainder * 100 / mb))
+        printf "%d.%02dM" "$int" "$dec"
+    elif [ "$bytes" -ge "$kb" ]; then
+        local int=$((bytes / kb))
+        local remainder=$((bytes % kb))
+        local dec=$((remainder * 100 / kb))
+        printf "%d.%02dK" "$int" "$dec"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+convert_kb() {
+    local kb="$1"
+
+    if [ -z "$kb" ] || [ "$kb" -eq 0 ] 2>/dev/null; then
+        echo "0B"
+        return
+    fi
+
+    case "$kb" in
+        ''|*[!0-9]*)
+            echo "0B"
+            return
+            ;;
+    esac
+
+    local bytes=$((kb * 1024))
+    convert_bytes "$bytes"
+}
+
+
 # 发送定时数据
 function send(){
   local ua="$(get_random_user_agent)"
-	echo "`date "+%Y-%m-%d %H:%M:%S"` 【定时数据】创建定时任务" >> ${logfile}
+	echo "`date "+%Y-%m-%d %H:%M:%S"` 【定时数据】执行定时任务" >> ${logfile}
 	pushbot_disturb;local send_disturb=$?
 	get_config "send_title" "router_status" "router_temp" "router_wan" "client_list" "google_check_timeout"
 
@@ -1345,6 +1749,15 @@ function send(){
 		done
 	fi
 
+	if [ -z "$1" ] && [ ! -z "$router_storage" ] && [ "$router_storage" -eq "1" ]; then
+      local storage_info=$(get_storage_info)
+      if [ ! -z "$storage_info" ]; then
+          local send_content="${send_content}${str_splitline}${str_title_start}${font_blue} 设备存储${font_end}${str_title_end}${storage_info}"
+      else
+          local send_content="${send_content}${str_splitline}${str_title_start}${font_red} 设备存储${font_end}${str_title_end}${str_linefeed}${str_tab}无法获取存储信息"
+      fi
+  fi
+
 	[ ! -z "$device_name" ] && local send_title="【$device_name】${send_title}"
 	[ -z "$send_content" ] && local send_content="${str_splitline}${str_title_start} 我遇到了一个难题${str_title_end}${str_linefeed}${str_tab}定时发送选项错误，你没有选择需要发送的项目，该怎么办呢${str_splitline}"
 	[ "$send_disturb" -eq "0" ] && diy_send "${send_title}" "${send_content}" "${jsonpath}" >/dev/null 2>&1
@@ -1355,6 +1768,17 @@ function send(){
 # 初始化
 read_config
 deltemp
+
+# 限制并发进程
+[ -z "$thread_num" ] || [ "$thread_num" -eq "0" ] && thread_num=5
+[ -e ${dir}fd1 ] || mkfifo ${dir}fd1
+exec 5<>${dir}fd1
+rm -f ${dir}fd1 >/dev/null 2>&1
+for i in `seq 1 $thread_num`; do
+	echo >&5
+done
+unset i
+
 # ========== 参数调用 ==========
 case "$1" in
     send)   send ;;
@@ -1405,16 +1829,6 @@ trap "exit 1" INT TERM
 
 # 添加定时任务
 add_pushbot_cron
-
-# 限制并发进程
-[ -z "$thread_num" ] || [ "$thread_num" -eq "0" ] && thread_num=5
-[ -e ${dir}fd1 ] || mkfifo ${dir}fd1
-exec 5<>${dir}fd1
-rm -f ${dir}fd1 >/dev/null 2>&1
-for i in `seq 1 $thread_num`; do
-	echo >&5
-done
-unset i
 
 # 载入在线设备
 pushbot_init;[ $? -eq 1 ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】读取设置出错，请检查设置项 " >> ${logfile} && exit
