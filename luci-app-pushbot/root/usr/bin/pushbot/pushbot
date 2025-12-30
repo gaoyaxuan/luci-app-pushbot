@@ -281,6 +281,19 @@ utstarcom\|volans\|xerox\|xiaomi\|zdc\|zhongxing\|smartisan" > ${oui_base} && ec
 	fi
 }
 
+function update_oui(){
+    echo "`date "+%Y-%m-%d %H:%M:%S"` 【更新】开始更新设备MAC厂商信息" >> ${logfile}
+
+    # 删除旧文件
+    rm -f ${oui_base} >/dev/null 2>&1
+    rm -f ${dir}oui.txt >/dev/null 2>&1
+
+    # 调用下载函数
+    down_oui
+
+    echo "`date "+%Y-%m-%d %H:%M:%S"` 【更新】设备MAC厂商信息更新完成" >> ${logfile}
+}
+
 # 清理临时文件
 function deltemp(){
 	unset title	content ipAddress_logrow online_list online_mac mac_online_status
@@ -1785,7 +1798,7 @@ case "$1" in
     soc)    echo $(soc_temp) > ${dir}soc_tmp ;;
     client) get_client ;;
     test)   send test ;;
-#        removeCron)   remove_pushbot_cron ;;
+    update_oui)   update_oui ;;
     daemon)
         ;;
     *)
