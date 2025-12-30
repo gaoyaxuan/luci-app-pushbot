@@ -1309,7 +1309,7 @@ function add_ip_black(){
 # ==================== 存储信息获取====================
 get_storage_info() {
     local result=""
-    local tmpfile="/tmp/df_storage_$$.tmp"
+    local tmpfile="${dir}df_storage_$$.tmp"
 
     # 检测可用工具
     local has_smart=0
@@ -1321,7 +1321,7 @@ get_storage_info() {
     df -k 2>/dev/null | grep "^/dev/" > "$tmpfile"
 
     # 提取唯一的物理磁盘
-    local disk_tmp="/tmp/unique_disks_$$.tmp"
+    local disk_tmp="${dir}unique_disks_$$.tmp"
     awk '{print $1}' "$tmpfile" | sed 's|/dev/||' | \
         sed -E 's/p?[0-9]+$//' | sed 's/nvme[0-9]+n[0-9]+p[0-9]+$/nvme&/;s/p[0-9]+$//' | \
         sort -u > "$disk_tmp"

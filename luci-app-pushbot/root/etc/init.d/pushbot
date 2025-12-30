@@ -53,6 +53,7 @@ reload_service() {
     stop
     sleep 1
     start
+    echo "pushbot restarted successfully.."
 }
 
 stop_service() {
@@ -64,6 +65,7 @@ stop_service() {
     rm -f /tmp/pushbot/pushbot_daemon_running.lock
     logger -t pushbot "remove pushbot daemon running lock"
     logger -t pushbot "pushbot stopped"
+    echo "pushbot stopped"
 }
 
 service_triggers() {
