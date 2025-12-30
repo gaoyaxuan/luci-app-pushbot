@@ -46,8 +46,10 @@ a:value("device", translate("精简当前设备列表"))
 a:value("nowtime", translate("精简当前时间"))
 a:value("content", translate("只推送标题"))
 a.widget = "checkbox"
+a.template = "pushbot/checkbox_inline"  -- 使用自定义模板
 a.default = nil
 a.optional = true
+
 
 --推送模式
 a=s:taboption("basic", ListValue,"jsonpath",translate("推送模式"))

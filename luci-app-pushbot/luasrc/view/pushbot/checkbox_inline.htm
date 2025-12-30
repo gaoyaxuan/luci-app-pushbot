@@ -1,0 +1,10 @@
+<%+cbi/valueheader%>
+<div style="display:flex;flex-wrap:wrap;gap:15px">
+    <% local c=self:cfgvalue(section) if type(c)=="string" then c={c} end local m={} if c then for _,v in ipairs(c) do m[v]=true end end for i,k in ipairs(self.keylist) do -%>
+    <label style="display:inline-flex;align-items:center;margin:0;cursor:pointer;white-space:nowrap">
+        <input class="cbi-input-checkbox" type="checkbox" style="margin:0 5px 0 0" name="cbid.<%=self.config%>.<%=section%>.<%=self.option%>" value="<%=k%>"<%if m[k] then%> checked="checked"<%end%> />
+        <span><%=self.vallist[i]%></span>
+    </label>
+    <% end -%>
+</div>
+<%+cbi/valuefooter%>
