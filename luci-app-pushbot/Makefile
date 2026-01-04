@@ -18,13 +18,6 @@ define Package/$(PKG_NAME)/install
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot  $(1)/etc/init.d/pushbot
 endef
 
-
-define Package/$(PKG_NAME)/postinst
-#!/bin/sh
-    chmod +x /usr/bin/pushbot/pushbot
-    chmod +x /etc/init.d/pushbot
-endef
-
 define Package/$(PKG_NAME)/conffiles
 /etc/config/pushbot
 /usr/bin/pushbot/api/diy.json
