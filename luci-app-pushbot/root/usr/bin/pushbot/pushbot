@@ -1392,23 +1392,40 @@ get_storage_info() {
         # ========== 分区和挂载信息 ==========
 
         local partition_info=""
-        local partition_count=$(grep -c "^/dev/${disk}" "$tmpfile")
+        local partition_count=0
+
+        # 获取唯一的分区列表（去重）
+        local unique_partitions=$(grep "^/dev/${disk}" "$tmpfile" | awk '{print $1}' | sort -u)
+
+        # 计算唯一分区数量
+        if [ -n "$unique_partitions" ]; then
+            partition_count=$(echo "$unique_partitions" | wc -l)
+        else
+            partition_count=0
+        fi
+
+        # 如果分区数为0（空字符串也算1行），需要特殊处理
+        [ -z "$unique_partitions" ] && partition_count=0
 
         if [ "$partition_count" -eq 0 ]; then
             partition_info="未挂载"
         else
             local part_details=""
             local IFS=$'\n'
-            for df_line in $(grep "^/dev/${disk}" "$tmpfile"); do
-                local mount_point=$(echo "$df_line" | awk '{print $6}')
-                part_details="${part_details}${mount_point}, "
+
+            # 对每个唯一分区，收集所有挂载点
+            for partition in $unique_partitions; do
+                local mount_points=$(grep "^${partition}" "$tmpfile" | awk '{print $6}' | paste -sd ',' -)
+                part_details="${part_details}${mount_points}, "
             done
 
             partition_info=$(echo "$part_details" | sed 's/, $//')
 
-            if [ "$partition_count" -gt 3 ]; then
+            # 如果挂载点太多，截断显示
+            local mount_count=$(echo "$partition_info" | tr ',' '\n' | wc -l)
+            if [ "$mount_count" -gt 3 ]; then
                 partition_info=$(echo "$partition_info" | awk -F', ' '{print $1", "$2", "$3}')
-                partition_info="${partition_info}... 等${partition_count}个"
+                partition_info="${partition_info}... 等${mount_count}个"
             fi
         fi
 
@@ -1417,7 +1434,10 @@ get_storage_info() {
         local total_used_kb=0
         local total_capacity_kb=0
 
-        for df_line in $(grep "^/dev/${disk}" "$tmpfile"); do
+        # 只统计每个唯一分区一次
+        for partition in $unique_partitions; do
+            # 获取该分区的第一条记录（bind mount的数据都相同）
+            local df_line=$(grep "^${partition}" "$tmpfile" | head -n1)
             local kb_size=$(echo "$df_line" | awk '{print $2}')
             local kb_used=$(echo "$df_line" | awk '{print $3}')
 
@@ -1432,7 +1452,6 @@ get_storage_info() {
 
         local used_human=$(convert_kb "$total_used_kb")
         local capacity_human=$(convert_kb "$total_capacity_kb")
-
         # ========== SMART 信息获取 ==========
 
         local smart_status=""
