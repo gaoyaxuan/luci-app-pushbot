@@ -542,27 +542,43 @@ function time_for_humans {
 }
 
 # 计算字符真实长度
+# 逻辑：ASCII码计1，非ASCII（中文等）计2
+# 注意：UTF-8中文通常3字节，这里通过计算字节数换算
 function length_str {
-	[ ! "$1" ] && return
-	local length_zh=`echo "$1"|awk '{print gensub(/[\u4e00-\u9FA5A-Za-z0-9_]/,"","g",$0)}'|awk -F "" '{print NF}'`
-	local length_en=`echo "$1"|awk '{print gensub(/[^\u4e00-\u9FA5A-Za-z0-9_]/,"","g",$0)}'|awk -F "" '{print NF}'`
-	echo `expr $length_zh / 3 \* 2 + $length_en`
+    local str="$1"
+    [ -z "$str" ] && echo 0 && return
+    # 1. 计算总字节数
+    local total_bytes=$(echo -n "$str" | wc -c)
+    # 2. 计算ASCII字符字节数 (剔除所有非ASCII字符)
+    # OpenWrt的tr支持范围删除，保留0-127的字符
+    local ascii_bytes=$(echo -n "$str" | tr -d -c '[\000-\177]' | wc -c)
+    # 3. 计算非ASCII字节数 (中文等)
+    local non_ascii_bytes=$((total_bytes - ascii_bytes))
+    # 4. 计算结果
+    # 假设中文3字节算2个长度：ASCII + (非ASCII / 3 * 2)
+    echo $((ascii_bytes + non_ascii_bytes / 3 * 2))
 }
-
 # 截取字符，避免中文乱码
 function cut_str {
-	[ ! "$1" ] && return
-	[ ! "$2" ] && return
-	[ `length_str $1` -le "$2" ] && echo "$1" && return
-	local temp_length=$2
-	while [ $(length_str `echo "$1"|cut -c -$temp_length`) -lt "$2" ]; do
-		temp_length=`expr $temp_length + 1`
-	done
-	while [ $(printf "%d" \'`echo "$1"|cut -c $temp_length`) -ge "128" ] && [ $(printf "%d" \'`echo "$1"|cut -c $temp_length`) -lt "224" ]; do
-		temp_length=`expr $temp_length + 1`
-	done
-	temp_length=`expr $temp_length - 1`
-	echo $(echo "$1"|cut -c -$temp_length)"..."
+    local str="$1"
+    local limit="$2"
+
+    [ -z "$str" ] && return
+    [ -z "$limit" ] && return
+    # 如果长度未超标，直接返回
+    local len=$(length_str "$str")
+    [ "$len" -le "$limit" ] && echo "$str" && return
+    local cut_bytes=$((limit * 3 / 2))
+    local tmp_str=$(echo "$str" | cut -b 1-$cut_bytes)
+    while true; do
+        # 如果长度还是太长，继续剪掉最后一个字节
+        if [ "$(length_str "$tmp_str")" -gt "$limit" ]; then
+             tmp_str=$(echo -n "$tmp_str" | sed 's/.$//')
+        else
+             break
+        fi
+    done
+    echo "${tmp_str}..."
 }
 
 # 随机数
@@ -1415,7 +1431,7 @@ get_storage_info() {
 
             # 对每个唯一分区，收集所有挂载点
             for partition in $unique_partitions; do
-                local mount_points=$(grep "^${partition}" "$tmpfile" | awk '{print $6}' | paste -sd ',' -)
+                local mount_points=$(awk -v part="^${partition}" '$0 ~ part { if (out) out=out "," $6; else out=$6 } END { print out }' "$tmpfile")
                 part_details="${part_details}${mount_points}, "
             done
 
