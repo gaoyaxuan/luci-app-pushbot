@@ -263,35 +263,120 @@ function diy_send(){
 
 # 下载设备MAC厂商信息
 function down_oui(){
-	[ -f ${oui_base} ] && local logrow=$(grep -c "" ${oui_base}) || local logrow="0"
-	[ $logrow -lt "10" ] && rm -f ${oui_base} >/dev/null 2>&1
-	if [ ! -z "$oui_data" ] && [ "$oui_data" -ne "3" ] && [ ! -f ${oui_base} ]; then
-		echo "`date "+%Y-%m-%d %H:%M:%S"` 【初始化】设备MAC厂商信息不存在，重新下载" >> ${logfile}
-    curl --retry 3 --retry-delay 2 -A "$(get_random_user_agent)" -m 60 -s -o "${dir}oui.txt" https://standards-oui.ieee.org/oui/oui.txt 2>/dev/null
-		if [ -f ${dir}oui.txt ] && [ "$oui_data" -eq "1" ]; then
-			cat ${dir}oui.txt|grep "base 16"|grep -i "apple\|aruba\|asus\|autelan\|belkin\|bhu\|buffalo\|cctf\|cisco\|comba\|datang\|dell\|dlink\|dowell\|ericsson\|fast\|feixun\|\
-fiberhome\|fujitsu\|grentech\|h3c\|hisense\|hiwifi\|honghai\|honghao\|hp\|htc\|huawei\|intel\|jinli\|jse\|lenovo\|lg\|liteon\|malata\|meizu\|mercury\|meru\|moto\|netcore\|\
-netgear\|nokia\|omron\|oneplus\|oppo\|philips\|router_unkown\|samsung\|shanzhai\|sony\|start_net\|sunyuanda\|tcl\|tenda\|texas\|tianyu\|tp-link\|ubq\|undefine\|VMware\|\
-utstarcom\|volans\|xerox\|xiaomi\|zdc\|zhongxing\|smartisan" > ${oui_base} && echo "`date "+%Y-%m-%d %H:%M:%S"` 【初始化】设备MAC厂商信息下载成功" >> ${logfile} || echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】设备MAC厂商信息下载失败" >> ${logfile} 
-		fi
-		if [ -f ${dir}oui.txt ] && [ "$oui_data" -eq "2" ]; then
-			cat ${dir}oui.txt|grep "base 16" > ${oui_base} && echo "`date "+%Y-%m-%d %H:%M:%S"` 【初始化】设备MAC厂商信息下载成功" >> ${logfile} || echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】设备MAC厂商信息下载失败" >> ${logfile}
-		fi
-		rm -f ${dir}oui.txt >/dev/null 2>&1
-	fi
+  local force_update=0
+  local logrow=0
+  local lock_file="${dir}oui_update.lock"
+
+  # 检查是否强制更新
+  [ "$1" = "update" ] && force_update=1
+
+  # 检查是否有更新任务正在运行
+  if [ -f "$lock_file" ]; then
+    local lock_pid=$(cat "$lock_file" 2>/dev/null)
+    if [ ! -z "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "$(date "+%Y-%m-%d %H:%M:%S") 【！！！】更新任务正在运行中（PID: $lock_pid），请勿重复执行" >> ${logfile}
+      return 2  # 返回 2 表示任务正在运行
+    else
+      # 锁文件存在但进程已不存在，清理锁文件
+      rm -f "$lock_file" 2>/dev/null
+    fi
+  fi
+
+  # 创建锁文件
+  echo $$ > "$lock_file"
+
+  # 设置陷阱，确保退出时删除锁文件
+  trap "rm -f '$lock_file' 2>/dev/null" EXIT INT TERM
+
+  # 检查现有文件行数
+  if [ -f ${oui_base} ]; then
+    logrow=$(grep -c "" ${oui_base} 2>/dev/null || echo 0)
+    [ $logrow -lt 10 ] && rm -f ${oui_base} 2>/dev/null
+  fi
+
+  # 判断是否需要下载
+  if [ -z "$oui_data" ] || [ "$oui_data" -eq 3 ]; then
+    rm -f "$lock_file" 2>/dev/null
+    return 0
+  fi
+
+  if [ -f ${oui_base} ] && [ $force_update -eq 0 ]; then
+    rm -f "$lock_file" 2>/dev/null
+    return 0
+  fi
+
+  # 开始下载
+  if [ $force_update -eq 1 ]; then
+    echo "$(date "+%Y-%m-%d %H:%M:%S") 【更新】强制更新设备MAC厂商信息" >> ${logfile}
+  else
+    echo "$(date "+%Y-%m-%d %H:%M:%S") 【初始化】设备MAC厂商信息不存在，重新下载" >> ${logfile}
+  fi
+
+  local ret_code=1
+
+  # 下载 OUI 数据
+  if curl --retry 3 --retry-delay 2 -A "$(get_random_user_agent)" -m 60 -s -o "${dir}oui.txt" \
+    https://standards-oui.ieee.org/oui/oui.txt 2>/dev/null; then
+
+    if [ ! -f "${dir}oui.txt" ] || [ ! -s "${dir}oui.txt" ]; then
+      echo "$(date "+%Y-%m-%d %H:%M:%S") 【！！！】设备MAC厂商信息下载失败（文件为空）" >> ${logfile}
+      rm -f "${dir}oui.txt" 2>/dev/null
+      ret_code=1
+    else
+      # 根据配置过滤数据
+      case "$oui_data" in
+        1)
+          local vendors="apple|aruba|asus|huawei|xiaomi|samsung|lg|htc|oneplus|oppo|meizu"
+          vendors="$vendors|cisco|hp|dell|lenovo|intel|tp-link|dlink|netgear|tenda"
+          vendors="$vendors|hiwifi|mercury|fast|ubq|h3c|vmware|belkin|buffalo|nokia"
+
+          grep "base 16" "${dir}oui.txt" | grep -iE "$vendors" > ${oui_base}
+          ;;
+        2)
+          grep "base 16" "${dir}oui.txt" > ${oui_base}
+          ;;
+        4)
+          echo "$(date "+%Y-%m-%d %H:%M:%S") 【初始化】使用在线查询模式，不缓存本地文件" >> ${logfile}
+          rm -f "${dir}oui.txt" "$lock_file" 2>/dev/null
+          return 0
+          ;;
+        *)
+          echo "$(date "+%Y-%m-%d %H:%M:%S") 【！！！】未知的 oui_data 配置: $oui_data" >> ${logfile}
+          rm -f "${dir}oui.txt" "$lock_file" 2>/dev/null
+          return 1
+          ;;
+      esac
+
+      # 验证处理结果
+      if [ -f ${oui_base} ] && [ -s ${oui_base} ]; then
+        local result_count=$(grep -c "" ${oui_base})
+        if [ $force_update -eq 1 ]; then
+          echo "$(date "+%Y-%m-%d %H:%M:%S") 【更新】设备MAC厂商信息更新成功（共 $result_count 条）" >> ${logfile}
+        else
+          echo "$(date "+%Y-%m-%d %H:%M:%S") 【初始化】设备MAC厂商信息下载成功（共 $result_count 条）" >> ${logfile}
+        fi
+        rm -f "${dir}oui.txt" 2>/dev/null
+        ret_code=0
+      else
+        echo "$(date "+%Y-%m-%d %H:%M:%S") 【！！！】设备MAC厂商信息处理失败" >> ${logfile}
+        rm -f "${dir}oui.txt" 2>/dev/null
+        [ $force_update -eq 0 ] && rm -f ${oui_base} 2>/dev/null
+        ret_code=1
+      fi
+    fi
+  else
+    echo "$(date "+%Y-%m-%d %H:%M:%S") 【！！！】设备MAC厂商信息下载失败（网络错误）" >> ${logfile}
+    rm -f "${dir}oui.txt" 2>/dev/null
+    ret_code=1
+  fi
+
+  # 清理锁文件
+  rm -f "$lock_file" 2>/dev/null
+  return $ret_code
 }
 
 function update_oui(){
-    echo "`date "+%Y-%m-%d %H:%M:%S"` 【更新】开始更新设备MAC厂商信息" >> ${logfile}
-
-    # 删除旧文件
-    rm -f ${oui_base} >/dev/null 2>&1
-    rm -f ${dir}oui.txt >/dev/null 2>&1
-
-    # 调用下载函数
-    down_oui
-
-    echo "`date "+%Y-%m-%d %H:%M:%S"` 【更新】设备MAC厂商信息更新完成" >> ${logfile}
+   down_oui "update"
 }
 
 # 清理临时文件
