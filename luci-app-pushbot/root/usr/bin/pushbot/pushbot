@@ -361,6 +361,10 @@ function getinterfaceuptime(){
 	getinterfacelist|grep \"uptime\"|sed $'s/\"uptime": //g'|sed $'s/\,//g'
 }
 
+clean_str() {
+  sed 's/\r//g; :a;N;$!ba;s/\n//g; s/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 # 查询 mac 地址
 function getmac(){
 	( echo "$tmp_mac"|grep -q "unknown" ) && unset tmp_mac # 为unknown时重新读取
@@ -369,7 +373,7 @@ function getmac(){
 	[ -f "/var/dhcp.leases" ] && [ -z "$tmp_mac" ] && local tmp_mac=`cat /var/dhcp.leases|grep -w ${1}|awk '{print $2}'|grep -v "^$"|sort -u|head -n1`
 	[ -z "$tmp_mac" ] && local tmp_mac=`cat /proc/net/arp|grep "0x2\|0x6"|grep -w ${1}|awk '{print $4}'|grep -v "^$"|sort -u|head -n1`
 	[ -z "$tmp_mac" ] && local tmp_mac="unknown"
-	echo "$tmp_mac"
+	echo "$tmp_mac" | clean_str
 }
 
 # 查询主机名
@@ -390,10 +394,23 @@ function getname(){
 		[ ! -z "$tmp_name" ] && break
 	done
 	( ! echo "$tmp_name"|grep -q -w "unknown\|*" ) && [ ! -z "$tmp_name" ] && echo "$tmp_name" && return || unset tmp_name # 为unknown时重新读取
-	[ -f "$oui_base" ] && local tmp_name=$(cat $oui_base|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/ /_/g')
-	[ ! -z "$oui_data" ] && [ "$oui_data" -eq "4" ] && local tmp_name=$(curl  -A "${ua}" -L -sS "https://standards-oui.ieee.org/oui/oui.txt"|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/ /_/g')
+	[ -f "$oui_base" ] && local tmp_name=$(cat $oui_base|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/[^a-zA-Z0-9]/_/g; s/__*/_/g; s/^_//; s/_$//')
+  #	网络查询
+	if [ ! -z "$oui_data" ] && [ "$oui_data" -eq "4" ]; then
+	    local mac_prefix=$(echo "$mac" | cut -c 1,2,4,5,7,8)
+      # 尝试从 API 获取
+      local vendor=$(curl -L -sS --connect-timeout 5 "https://api.macvendors.com/${mac_prefix}")
+
+      # 如果接口返回了报错或为空，则设为 Unknown
+      if [ -z "$vendor" ] || echo "$vendor" | grep -q "errors"; then
+          local tmp_name="unknown"
+      else
+          # 清洗字符串
+          local tmp_name=$(echo "$vendor" | sed 's/[^a-zA-Z0-9]/_/g; s/__*/_/g; s/^_//; s/_$//')
+      fi
+  fi
 	[ -z "$tmp_name" ] && local tmp_name="unknown"
-	echo "$tmp_name"
+	echo "$tmp_name" | clean_str
 }
 
 # 查询设备接口
@@ -407,7 +424,7 @@ function getinterface(){
 		done
 	fi
 	[ -z "$ip_interface" ] && local ip_interface=`cat /proc/net/arp|grep "0x2\|0x6"|grep -i -w ${1}|awk '{print $6}'|grep -v "^$"|sort -u|head -n1`
-	echo "$ip_interface"
+	echo "$ip_interface" | clean_str
 }
 
 # ping
