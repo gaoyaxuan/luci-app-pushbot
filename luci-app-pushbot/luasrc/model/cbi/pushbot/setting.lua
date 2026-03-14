@@ -456,7 +456,7 @@ a.default=0
 a.rmempty = true
 a:depends("web_login_failed","1")
 a:depends("ssh_login_failed","1")
-a.description = translate("直到重启前都不会重置次数，请先添加白名单")
+a.description = translate("直到重启前都不会重置次数，请先添加白名单<br>需要安装 nftables")
 
 a= s:taboption("content", Value, "ip_black_timeout", "拉黑时间(秒)")
 a.default = "86400"
@@ -568,6 +568,15 @@ a=s:taboption("crontab", Flag,"router_storage",translate("存储信息"))
 a.default=1
 a:depends("crontab","1")
 a:depends("crontab","2")
+a.description = translate("需安装 smartmontools 获取SMART信息及检测休眠状态")
+
+a=s:taboption("crontab", ListValue,"disk_standby_action",translate("硬盘休眠处理"))
+a.rmempty = true
+a.default = "skip"
+a:value("skip",translate("跳过检测"))
+a:value("wake",translate("唤醒后检测"))
+a:depends("router_storage","1")
+a.description = translate("当硬盘处于休眠/待机状态时的处理方式<br/>跳过检测不会唤醒硬盘，显示\"休眠中\"<br/>唤醒检测会导致硬盘被唤醒")
 
 a=s:taboption("crontab", Value,"google_check_timeout",translate("全球互联检测超时时间"))
 a.rmempty = true

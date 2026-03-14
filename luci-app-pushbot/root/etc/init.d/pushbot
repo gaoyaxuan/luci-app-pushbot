@@ -61,6 +61,8 @@ stop_service() {
     pgrep -f "/usr/bin/pushbot/pushbot" | xargs kill -9
     remove_pushbot_cron
     logger -t pushbot "clean pushbot cron"
+    # 清理 nft 拉黑表
+    nft delete table inet pushbot_blacklist >/dev/null 2>&1
     # 清理锁
     rm -f /tmp/pushbot/pushbot_daemon_running.lock
     logger -t pushbot "remove pushbot daemon running lock"

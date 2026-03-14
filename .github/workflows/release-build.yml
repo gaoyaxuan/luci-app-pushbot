@@ -27,34 +27,15 @@ jobs:
           - x86_64
           - aarch64_cortex-a53
           - aarch64_cortex-a72
-          - aarch64_cortex-a76
           - aarch64_generic
-          - arm_arm1176jzf-s_vfp
-          - arm_arm926ej-s
-          - arm_cortex-a15_neon-vfpv4
-          - arm_cortex-a5_vfpv4
           - arm_cortex-a7
           - arm_cortex-a7_neon-vfpv4
-          - arm_cortex-a7_vfpv4
-          - arm_cortex-a8_vfpv3
           - arm_cortex-a9
           - arm_cortex-a9_neon
-          - arm_cortex-a9_vfpv3-d16
-          - arm_fa526
-          - arm_xscale
-          - i386_pentium-mmx
-          - i386_pentium4
-          - loongarch64_generic
-          - mips64_mips64r2
-          - mips64_octeonplus
-          - mips64el_mips64r2
+          - arm_cortex-a15_neon-vfpv4
           - mips_24kc
-          - mips_4kec
-          - mips_mips32
           - mipsel_24kc
-          - mipsel_24kc_24kf
           - mipsel_74kc
-          - mipsel_mips32
           - riscv64_riscv64
         sdk:
           - openwrt-24.10
@@ -134,30 +115,25 @@ jobs:
             ### 🏗️ 支持的架构
 
             #### 🖥️ x86 架构
-            - `x86_64` - 64位 x86 设备
-            - `i386_pentium4`, `i386_pentium-mmx` - 32位 x86 设备
+            - `x86_64` - 64位 x86 软路由
 
             #### 📱 ARM 64位 (aarch64)
             - `aarch64_generic` - 通用 ARM64
-            - `aarch64_cortex-a53` - Cortex-A53 (树莓派3)
-            - `aarch64_cortex-a72` - Cortex-A72 (树莓派4)
-            - `aarch64_cortex-a76` - Cortex-A76
+            - `aarch64_cortex-a53` - Cortex-A53 (树莓派3等)
+            - `aarch64_cortex-a72` - Cortex-A72 (树莓派4等)
 
             #### 📱 ARM 32位
-            - `arm_cortex-a7` - Cortex-A7
-            - `arm_cortex-a9` - Cortex-A9
-            - `arm_cortex-a15_neon-vfpv4` - Cortex-A15
-            - 等多个 ARM 子架构
+            - `arm_cortex-a7` / `arm_cortex-a7_neon-vfpv4`
+            - `arm_cortex-a9` / `arm_cortex-a9_neon`
+            - `arm_cortex-a15_neon-vfpv4`
 
-            #### 🌐 MIPS 架构  
+            #### 🌐 MIPS 架构
             - `mipsel_24kc` - MT7621路由器 (小米、红米等)
-            - `mips_24kc` - AR71xx路由器
-            - `mips64_octeonplus` - Cavium Octeon
-            - 等多个 MIPS 变种
+            - `mipsel_74kc` - MT7620路由器
+            - `mips_24kc` - AR71xx/QCA路由器
 
             #### 🆕 其他架构
             - `riscv64_riscv64` - RISC-V 64位
-            - `loongarch64_generic` - 龙芯架构
 
             ### 📋 SDK 版本说明
 

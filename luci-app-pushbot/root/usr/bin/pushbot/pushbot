@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # 读取设置文件
 function get_config(){
 	while [[ "$*" != "" ]]; do
@@ -25,28 +25,19 @@ function convert_tokens_to_json_array() {
 }
 
 function get_random_user_agent() {
-    cat <<'EOF' | awk 'BEGIN{srand()} {if(NF>0)lines[++c]=$0} END{print lines[int(rand()*c)+1]}'
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
-Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0
-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36
-EOF
+    # 动态生成 UA：随机浏览器类型 + 随机版本号，避免固定列表过时
+    local chrome_major=$((110 + RANDOM % 40))
+    local firefox_major=$((110 + RANDOM % 40))
+    local edge_major=$((110 + RANDOM % 40))
+    local safari_minor=$((RANDOM % 10))
+    local patch=$((RANDOM % 5))
+    case $((RANDOM % 5)) in
+        0) echo "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome_major}.0.0.${patch} Safari/537.36" ;;
+        1) echo "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome_major}.0.0.${patch} Safari/537.36" ;;
+        2) echo "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${firefox_major}.0) Gecko/20100101 Firefox/${firefox_major}.0" ;;
+        3) echo "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${edge_major}.0.0.${patch} Safari/537.36 Edg/${edge_major}.0.0.${patch}" ;;
+        4) echo "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.${safari_minor} Safari/605.1.15" ;;
+    esac
 }
 
 
@@ -80,7 +71,7 @@ function read_config(){
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
 	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv"  \
 	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
-	"router_storage"
+	"router_storage" "disk_standby_action"
 
   if command -v opkg >/dev/null 2>&1; then
     	for str_version in "wrtbwmon" "iputils-arping" "curl" "iw"; do
@@ -139,7 +130,6 @@ function read_config(){
 
 # 初始化
 function pushbot_init(){
-	enable_detection
 	if [ -f "/usr/bin/pushbot/errlog" ]; then
 		cat /usr/bin/pushbot/errlog > ${logfile}
 		echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】载入上次重启前日志" >> ${logfile}
@@ -388,21 +378,17 @@ function deltemp(){
 	[ $logrow -gt 500 ] && sed -i '1,100d' ${logfile} && echo "`date "+%Y-%m-%d %H:%M:%S"`  【清理】日志超出上限，删除前 100 条" >> ${logfile}
 }
 
-# 检测程序开关
-function enable_detection(){
-	[ ! "$1" ] && local time_n=1
-#	for i in `seq 1 $time_n`; do
-#		get_config pushbot_enable;[ -z "$pushbot_enable" ] || [ "$pushbot_enable" -eq "0" ] && `/etc/init.d/pushbot stop` || sleep 1
-#	done
-}
-
 # 获取 ip
 function getip(){
   local ua="$(get_random_user_agent)"
 	[ ! "$1" ] && return
 	if [ $1 == "wanipv4" ] ;then
-		[ ! -z "$ipv4_interface" ] && local wanIP=$(/sbin/ifconfig ${ipv4_interface}|awk '/inet addr/ {print $2}'|awk -F: '{print $2}'|grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-		[ -z "$ipv4_interface" ] && local wanIP=$(getinterfacelist|grep '\"address\"'|grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+		if [ ! -z "$ipv4_interface" ]; then
+			local wanIP=$(ip addr show ${ipv4_interface} 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -n1)
+			[ -z "$wanIP" ] && local wanIP=$(/sbin/ifconfig ${ipv4_interface} 2>/dev/null|awk '/inet addr/ {print $2}'|awk -F: '{print $2}'|grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+		else
+			local wanIP=$(getinterfacelist|grep '\"address\"'|grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+		fi
 		echo "$wanIP"
 	elif [ $1 == "hostipv4" ] ;then
 		function get_hostipv4()
@@ -475,14 +461,14 @@ function getname(){
 		local dhcp_ip_n=`echo "$dhcp_config"|grep -w ^dhcp.@${dhcp_config_str}.*ip=.${1}|sed -nr 's#^dhcp.(.*).ip.*#\1#gp'` 2>/dev/null
 		[ ! -z "$dhcp_ip_n" ] && [ -z "$tmp_name" ] && local tmp_name=`uci get dhcp.${dhcp_ip_n}.name` 2>/dev/null
 		local dhcp_mac_n=`echo "$dhcp_config"|grep -i ^dhcp.@${dhcp_config_str}.*mac=.${2}|sed -nr 's#^dhcp.(.*).mac.*#\1#gp'` 2>/dev/null
-		[ ! -z "$dhcp_mac_n" ] && [ -z "$tmp_name" ] && local tmp_name=`uci get dhcp.${dhcp_ip_n}.name` 2>/dev/null
+		[ ! -z "$dhcp_mac_n" ] && [ -z "$tmp_name" ] && local tmp_name=`uci get dhcp.${dhcp_mac_n}.name` 2>/dev/null
 		[ ! -z "$tmp_name" ] && break
 	done
 	( ! echo "$tmp_name"|grep -q -w "unknown\|*" ) && [ ! -z "$tmp_name" ] && echo "$tmp_name" && return || unset tmp_name # 为unknown时重新读取
 	[ -f "$oui_base" ] && local tmp_name=$(cat $oui_base|grep -i $(echo "$2"|cut -c 1,2,4,5,7,8)|sed -nr 's#^.*16)..(.*)#\1#gp'|sed 's/[^a-zA-Z0-9]/_/g; s/__*/_/g; s/^_//; s/_$//')
   #	网络查询
 	if [ ! -z "$oui_data" ] && [ "$oui_data" -eq "4" ]; then
-	    local mac_prefix=$(echo "$mac" | cut -c 1,2,4,5,7,8)
+	    local mac_prefix=$(echo "$2" | cut -c 1,2,4,5,7,8)
       # 尝试从 API 获取
       local vendor=$(curl -L -sS --connect-timeout 5 "https://api.macvendors.com/${mac_prefix}")
 
@@ -535,7 +521,7 @@ function getcpu(){
 # 获取SOC温度 （取所有传感器温度最大值）
 function soc_temp(){
 	[ -z "$soc_code" ] && local soctemp=`sensors 2>/dev/null|grep °C|sed -nr 's#^.*:.*\+(.*)°C .*#\1#gp'|sort -nr|head -n1`
-	[ -z "$soc_code" ] && [ -z "$soctemp" ] && local soctemp=`cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null|sort -nr|head -n1|cut -c-2`
+	[ -z "$soc_code" ] && [ -z "$soctemp" ] && local soctemp=`cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null|sort -nr|head -n1` && [ ! -z "$soctemp" ] && [ "$soctemp" -gt 1000 ] 2>/dev/null && soctemp=$((soctemp / 1000))
 	[ "$soc_code" == "pve" ] && [ ! -z "$pve_host" ] && local soctemp=`ssh -i ~/.ssh/id_rsa root@${pve_host} -p ${pve_port} sensors 2>/dev/null|grep °C|sed -nr 's#^.*:.*\+(.*)°C .*#\1#gp'|sort -nr|head -n1`
 	[ ! -z "$soctemp" ] && echo "$soctemp" && return
 	[ ! -z "$soc_code" ] && eval `echo "$soc_code"` 2>/dev/null
@@ -687,7 +673,8 @@ function cut_str {
 function rand(){
     local min=$1
     local max=$(($2- $min + 1))
-    local num=$(date +%s%N)
+    local num=$RANDOM
+    [ -z "$num" ] && num=$(date +%s)
     echo $(($num % $max + $min))
 }
 
@@ -731,17 +718,17 @@ add_pushbot_cron() {
 
   	# 重置流量
   	if [ ! -z "$reset_regularly" ] && [ "$reset_regularly" -eq "1" ]; then
-  		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
-  		crontab -l 2>/dev/null > conf && echo -e "0 0 * * * rm /tmp/pushbot/usage6.db >/dev/null 2>&1" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  		crontab -l 2>/dev/null > ${dir}conf && echo -e "0 0 * * * rm /tmp/pushbot/usage.db >/dev/null 2>&1" >> ${dir}conf && crontab ${dir}conf && rm -f ${dir}conf >/dev/null 2>&1
+  		crontab -l 2>/dev/null > ${dir}conf && echo -e "0 0 * * * rm /tmp/pushbot/usage6.db >/dev/null 2>&1" >> ${dir}conf && crontab ${dir}conf && rm -f ${dir}conf >/dev/null 2>&1
   	fi
   	[ ! -z "$regular_time_2" ] && local regular_time_2=",${regular_time_2}"
   	[ ! -z "$regular_time_3" ] && local regular_time_3=",${regular_time_3}"
   	# 定时发送
   	if [ ! -z "$regular_time" ] || [ ! -z "$regular_time_2" ] || [ ! -z "$regular_time_3" ]; then
-  		crontab -l 2>/dev/null > conf && echo -e "0 $regular_time$regular_time_2$regular_time_3 * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  		crontab -l 2>/dev/null > ${dir}conf && echo -e "0 $regular_time$regular_time_2$regular_time_3 * * * /usr/bin/pushbot/pushbot send &" >> ${dir}conf && crontab ${dir}conf && rm -f ${dir}conf >/dev/null 2>&1
   	# 间隔发送
   	elif [ ! -z "$interval_time" ]; then
-  		crontab -l 2>/dev/null > conf && echo -e "0 */$interval_time * * * /usr/bin/pushbot/pushbot send &" >> conf && crontab conf && rm -f conf >/dev/null 2>&1
+  		crontab -l 2>/dev/null > ${dir}conf && echo -e "0 */$interval_time * * * /usr/bin/pushbot/pushbot send &" >> ${dir}conf && crontab ${dir}conf && rm -f ${dir}conf >/dev/null 2>&1
   	fi
   	re_cron
 	  echo "`date "+%Y-%m-%d %H:%M:%S"` Cron 添加成功" >> ${logfile}
@@ -775,7 +762,6 @@ function pushbot_disturb(){
 		[ -z "$sheep_starttime" ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【免打扰】夜深了，该休息了" >> ${logfile} && sheep_starttime=`date +%s`
 		if [ "$pushbot_sheep" -eq "1" ] ;then
 			while [ `date +%H` -lt "$endtime" ]; do
-				enable_detection
 				sleep $sleeptime
 			done
 		elif  [ "$pushbot_sheep" -eq "2" ] ;then
@@ -790,7 +776,7 @@ function LockFile(){
 	if [ $1 = "lock" ] ;then
 		[ ! -f "${dir}pushbot.lock" ] && > ${dir}pushbot.lock && return
 		while [ -f "${dir}pushbot.lock" ]; do
-			enable_detection 1
+			sleep 1
 		done
 		LockFile lock
 	fi
@@ -935,7 +921,7 @@ function rand_geturl(){
 				geterrdevicealiases
 				if [ "$?" -eq "0" ]; then
 					[ -f /usr/bin/pushbot/autoreboot_count ] && retry_count=`cat /usr/bin/pushbot/autoreboot_count` && rm -f /usr/bin/pushbot/autoreboot_count >/dev/null 2>&1
-					[ ! -z ${retry_count} ] && retry_count=0;retry_count=`expr $retry_count + 1`
+					[ -z "${retry_count}" ] && retry_count=0;retry_count=`expr $retry_count + 1`
 					if [ "$network_err_event" -eq "1" ] ;then
 						if [ "$retry_count" -lt "3" ] ;then
 							echo "$retry_count" > /usr/bin/pushbot/autoreboot_count
@@ -1000,7 +986,6 @@ function rand_geturl(){
 			elif [ -f /usr/bin/pushbot/autoreboot_count ]; then
 				network_err_time=`expr $network_err_time - 600` && sleep 60
 			fi
-			enable_detection
 			sleep $sleeptime
 		fi
 	continue
@@ -1018,7 +1003,7 @@ function ip_changes(){
 	if [ -f ${dir}ip ]; then
 		local last_IPv4=$(cat "${dir}ip"|grep IPv4|awk '{print $2}'|grep -v "^$"|sort -u|head -n1)
 		local last_IPv6=$(cat "${dir}ip"|grep IPv6|awk '{print $2}'|grep -v "^$"|sort -u|head -n1)
-		if [ ! -z "$pushbot_ipv4" ] && [ "$pushbot_ipv4" -ne "0" ] && [ ! -z "$IPv4" ] && ( ! echo ${IPv4}|grep -w -q ${last_IPv4} ); then
+		if [ ! -z "$pushbot_ipv4" ] && [ "$pushbot_ipv4" -ne "0" ] && [ ! -z "$IPv4" ] && [ ! -z "$last_IPv4" ] && ( ! echo "${IPv4}"|grep -w -q "${last_IPv4}" ); then
 			echo "`date "+%Y-%m-%d %H:%M:%S"` ${disturb_text}当前IP：${IPv4}" >> ${logfile}
 			echo IPv4 $IPv4 > ${dir}ip && echo -e IPv6 $last_IPv6 >> ${dir}ip
 			title="IP 地址变化"
@@ -1027,7 +1012,7 @@ function ip_changes(){
 			echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】获取 IPv4 地址失败" >> ${logfile}
 		fi
 
-		if [ ! -z "$pushbot_ipv6" ] && [ "$pushbot_ipv6" -ne "0" ] && [ ! -z "$IPv6" ] && ( ! echo "$IPv6"|grep -w -q ${last_IPv6} ); then
+		if [ ! -z "$pushbot_ipv6" ] && [ "$pushbot_ipv6" -ne "0" ] && [ ! -z "$IPv6" ] && [ ! -z "$last_IPv6" ] && ( ! echo "$IPv6"|grep -w -q "${last_IPv6}" ); then
 			echo "`date "+%Y-%m-%d %H:%M:%S"` ${disturb_text}当前IPv6：${IPv6}" >> ${logfile}
 			echo IPv4 $IPv4 > ${dir}ip && echo -e IPv6 $IPv6 >> ${dir}ip
 			[ -z "$title" ] && title="IPv6 地址变化"
@@ -1076,7 +1061,7 @@ function up(){
 			usage down $1
 			echo "$1 ${ip_mac} ${ip_name} `date +%s` ${ip_interface}" >> ${dir}ipAddress
 			LockFile unlock && return
-		elif [ ! -z "$tmp_mac" ] && [ -f "${dir}tmp_downlist" ] && ( cat ${dir}tmp_downip|grep -q -w -i ${tmp_mac} ); then
+		elif [ ! -z "$tmp_mac" ] && [ -f "${dir}tmp_downlist" ] && ( cat ${dir}tmp_downlist|grep -q -w -i ${tmp_mac} ); then
 			local tmp_downip=`cat ${dir}tmp_downlist|grep -w -i ${tmp_mac}|awk '{print $1}'|grep -v "^$"|sort -u|head -n1`
 			usage down $tmp_downip
 			sed -i "/^${tmp_downip} /d" ${dir}tmp_downlist
@@ -1390,50 +1375,48 @@ function login_send(){
 
 }
 
-# 添加黑名单
+# 添加黑名单（使用 nftables）
 function add_ip_black(){
-  	if ! command -v ipset >/dev/null 2>&1; then
-  		echo "------[拉黑功能失效 Error]------"  >> ${logfile}
-  		local install_cmd=""
-  		# 检测包管理器类型
-  		if command -v apk >/dev/null 2>&1; then
-  			# OpenWrt 新版 (Alpine Package Keeper)
-  			install_cmd="apk add ipset kmod-ipt-ipset"
-  		elif command -v opkg >/dev/null 2>&1; then
-  			# OpenWrt 旧版
-  			install_cmd="opkg update && opkg install ipset kmod-ipt-ipset"
-  		else
-  			install_cmd="请手动安装 ipset kmod-ipt-ipset 组件"
-  		fi
-
-  		# 写入日志 (同时输出到终端和系统日志)
-  		echo "缺少 ipset 命令，无法添加黑名单！"  >> ${logfile}
-  		echo "请执行以下命令安装: ${install_cmd}"  >> ${logfile}
-  		return 1
-  	fi
-  	# 白名单ip直接跳过
-  echo "$ip_white_list"|grep -w -q "$login_ip" && return 1
+	if ! command -v nft >/dev/null 2>&1; then
+		echo "------[拉黑功能失效 Error]------" >> ${logfile}
+		local install_cmd=""
+		if command -v apk >/dev/null 2>&1; then
+			install_cmd="apk add nftables"
+		elif command -v opkg >/dev/null 2>&1; then
+			install_cmd="opkg update && opkg install nftables"
+		else
+			install_cmd="请手动安装 nftables 组件"
+		fi
+		echo "缺少 nft 命令，无法添加黑名单！" >> ${logfile}
+		echo "请执行以下命令安装: ${install_cmd}" >> ${logfile}
+		return 1
+	fi
+	# 白名单ip直接跳过
+	echo "$ip_white_list" | grep -w -q "$login_ip" && return 1
 
 	[ -f "${ip_blacklist_path}" ] && local logrow=$(grep -c "" ${ip_blacklist_path}) || local logrow="0"
 	[ ! -f "${ip_blacklist_path}" ] && local logrow="0"
 	[ ! -z "$web_login_black" ] && [ "$web_login_black" -eq "0" ] || [ -z "$web_login_black" ] && local logrow="0"
-	ipset flush ip_blacklist >/dev/null 2>&1
-	
+
 	if [ $logrow -le "0" ]; then
-		iptables -D INPUT -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1
-		iptables -D FORWARD  -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1
-		ipset destroy ip_blacklist >/dev/null 2>&1
+		nft delete table inet pushbot_blacklist >/dev/null 2>&1
 		return
 	fi
-	
-	ipset list ip_blacklist >/dev/null 2>&1 || ipset create ip_blacklist hash:ip timeout ${ip_black_timeout:-3600} >/dev/null 2>&1
-	iptables -C INPUT -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1 || iptables -I INPUT -m set --match-set ip_blacklist src -j DROP >/dev/null 2>&1
+
+	# 创建独立的 nft 表（不依赖 fw4）
+	nft delete table inet pushbot_blacklist >/dev/null 2>&1
+	nft add table inet pushbot_blacklist
+	nft add set inet pushbot_blacklist ip_blacklist "{ type ipv4_addr; flags timeout; timeout ${ip_black_timeout:-3600}s; }"
+	nft add chain inet pushbot_blacklist input "{ type filter hook input priority -1; policy accept; }"
+	nft add rule inet pushbot_blacklist input ip saddr @ip_blacklist drop
+
 	echo "$1" >> ${ip_blacklist_path}
-	for ip_black in `cat ${ip_blacklist_path}`; do
-		ip_black=`echo "$ip_black"|grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"`
-		ipset -! add ip_blacklist $ip_black >/dev/null 2>&1
+	for ip_black in $(cat ${ip_blacklist_path}); do
+		ip_black=$(echo "$ip_black" | grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}")
+		[ ! -z "$ip_black" ] && nft add element inet pushbot_blacklist ip_blacklist "{ $ip_black }" >/dev/null 2>&1
 	done
-	ipset list ip_blacklist|grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" > ${ip_blacklist_path}
+	# 同步当前生效的IP回写到文件
+	nft list set inet pushbot_blacklist ip_blacklist 2>/dev/null | grep -Eo "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}" > ${ip_blacklist_path}
 }
 
 
@@ -1444,9 +1427,7 @@ get_storage_info() {
 
     # 检测可用工具
     local has_smart=0
-    local has_hdparm=0
     command -v smartctl >/dev/null 2>&1 && has_smart=1
-    command -v hdparm >/dev/null 2>&1 && has_hdparm=1
 
     # 获取 df 信息
     df -k 2>/dev/null | grep "^/dev/" > "$tmpfile"
@@ -1570,6 +1551,27 @@ get_storage_info() {
 
         local used_human=$(convert_kb "$total_used_kb")
         local capacity_human=$(convert_kb "$total_capacity_kb")
+        # ========== 休眠检测 ==========
+
+        local disk_standby=0
+        local standby_smart_ok=0
+        if [ "$has_smart" = "1" ]; then
+            # smartctl -n standby 不会唤醒磁盘
+            # 部分硬盘即使休眠也能通过缓存返回 SMART 数据
+            smartctl -n standby -H "/dev/$disk" >/dev/null 2>&1
+            local standby_rc=$?
+            # 退出码 2 = 磁盘处于低功耗模式
+            if [ "$standby_rc" -eq 2 ]; then
+                disk_standby=1
+                if [ "$disk_standby_action" = "wake" ]; then
+                    # 唤醒：不带 -n 直接查询
+                    smartctl -H "/dev/$disk" >/dev/null 2>&1
+                    sleep 1
+                    disk_standby=0
+                fi
+            fi
+        fi
+
         # ========== SMART 信息获取 ==========
 
         local smart_status=""
@@ -1578,43 +1580,49 @@ get_storage_info() {
         local power_cycle=""
         local device_type=""
         local is_usb=0
+        local bad_sectors=0
+        local bad_sector_detail=""
 
         if [ "$has_smart" = "1" ]; then
             local smart_tmp="/tmp/smart_$$.tmp"
             local smart_success=0
+            local smart_nocheck_opt=""
+
+            # 休眠盘：用 -n standby 尝试不唤醒获取缓存的 SMART 数据
+            [ "$disk_standby" = "1" ] && smart_nocheck_opt="-n standby"
 
             # 检测设备类型
             case "$disk" in
                 nvme*)
                     # NVMe 设备
                     device_type="nvme"
-                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
-                    [ -s "$smart_tmp" ] && smart_success=1
+                    smartctl $smart_nocheck_opt -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                    [ -s "$smart_tmp" ] && grep -q "overall-health\|Health Status\|Temperature:\|Power On Hours" "$smart_tmp" && smart_success=1
                     ;;
                 sd*)
                     # SATA/SAS/USB 设备
-                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                    smartctl $smart_nocheck_opt -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
 
                     # 检查是否为 USB 设备
                     if grep -q "Unknown USB bridge\|specify device type" "$smart_tmp" 2>/dev/null; then
                         is_usb=1
                         # 尝试不同的 USB 接口类型
                         for usb_type in sat usbcypress usbjmicron usbprolific usbsunplus; do
-                            smartctl -d $usb_type -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                            smartctl $smart_nocheck_opt -d $usb_type -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
                             if [ -s "$smart_tmp" ] && ! grep -q "Unknown USB bridge\|specify device type" "$smart_tmp"; then
                                 device_type="usb"
-                                smart_success=1
+                                grep -q "overall-health\|Health Status\|Temperature_Celsius\|Power_On_Hours" "$smart_tmp" && smart_success=1
                                 break
                             fi
                         done
                     else
-                        [ -s "$smart_tmp" ] && smart_success=1
                         device_type="ata"
+                        [ -s "$smart_tmp" ] && grep -q "overall-health\|Health Status\|Temperature_Celsius\|Power_On_Hours" "$smart_tmp" && smart_success=1
                     fi
                     ;;
                 *)
-                    smartctl -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
-                    [ -s "$smart_tmp" ] && smart_success=1
+                    smartctl $smart_nocheck_opt -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
+                    [ -s "$smart_tmp" ] && grep -q "overall-health\|Health Status" "$smart_tmp" && smart_success=1
                     ;;
             esac
 
@@ -1627,7 +1635,7 @@ get_storage_info() {
                         smart_status="${font_green2}健康${font_end2}"
                         ;;
                     FAILED*|FAILING*)
-                        smart_status="${font_red2}故障${font_end2}"
+                        smart_status="${font_red}故障${font_end}"
                         ;;
                     *)
                         [ ! -z "$health" ] && smart_status="$health"
@@ -1663,6 +1671,47 @@ get_storage_info() {
                         power_cycle=$(grep "Power_Cycle_Count" "$smart_tmp" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $i > 0) print $i}' | tail -n1)
                     fi
                 fi
+
+                # ========== 坏道/介质错误解析 ==========
+                # 只显示实际从 SMART 中读取到的属性，读不到的不显示（避免不支持的设备假显示0）
+                if [ "$device_type" = "nvme" ]; then
+                    # NVMe: 介质错误和错误日志
+                    local media_errors=$(grep "^Media and Data Integrity Errors:" "$smart_tmp" | awk '{print $NF}' | tr -d ',')
+                    local error_log_entries=$(grep "^Error Information Log Entries:" "$smart_tmp" | awk '{print $NF}' | tr -d ',')
+                    if [ ! -z "$media_errors" ]; then
+                        bad_sector_detail="${bad_sector_detail}介质错误:${media_errors} "
+                        [ "$media_errors" -gt 0 ] 2>/dev/null && bad_sectors=$((bad_sectors + media_errors))
+                    fi
+                    if [ ! -z "$error_log_entries" ]; then
+                        bad_sector_detail="${bad_sector_detail}错误日志:${error_log_entries} "
+                        [ "$error_log_entries" -gt 0 ] 2>/dev/null && bad_sectors=$((bad_sectors + error_log_entries))
+                    fi
+                else
+                    # SATA/ATA: 坏道相关属性
+                    local reallocated=$(grep "Reallocated_Sector_Ct" "$smart_tmp" | awk '{print $10}')
+                    local pending=$(grep "Current_Pending_Sector" "$smart_tmp" | awk '{print $10}')
+                    local uncorrectable=$(grep "Offline_Uncorrectable" "$smart_tmp" | awk '{print $10}')
+                    if [ ! -z "$reallocated" ]; then
+                        bad_sector_detail="${bad_sector_detail}重映射:${reallocated} "
+                        [ "$reallocated" -gt 0 ] 2>/dev/null && bad_sectors=$((bad_sectors + reallocated))
+                    fi
+                    if [ ! -z "$pending" ]; then
+                        bad_sector_detail="${bad_sector_detail}待处理:${pending} "
+                        [ "$pending" -gt 0 ] 2>/dev/null && bad_sectors=$((bad_sectors + pending))
+                    fi
+                    if [ ! -z "$uncorrectable" ]; then
+                        bad_sector_detail="${bad_sector_detail}不可纠正:${uncorrectable} "
+                        [ "$uncorrectable" -gt 0 ] 2>/dev/null && bad_sectors=$((bad_sectors + uncorrectable))
+                    fi
+                fi
+                # 设置全局异常标志（非 local，调用方可见）
+                if [ "$bad_sectors" -gt 0 ]; then
+                    disk_health_anomaly=1
+                fi
+                # SMART 健康状态为 FAILED 也视为异常
+                case "$health" in
+                    FAILED*|FAILING*) disk_health_anomaly=1 ;;
+                esac
             fi
 
             rm -f "$smart_tmp"
@@ -1756,6 +1805,18 @@ get_storage_info() {
 
         if [ ! -z "$runtime_line" ]; then
             result="${result}${str_linefeed}${str_tab}${runtime_line}"
+        fi
+
+        # 第七行：坏道信息（始终显示，正常绿色/异常红色，便于确认采集正常）
+        if [ "$bad_sectors" -gt 0 ] 2>/dev/null; then
+            result="${result}${str_linefeed}${str_tab}${font_red}坏道: ${bad_sector_detail}${font_end}"
+        elif [ ! -z "$bad_sector_detail" ]; then
+            result="${result}${str_linefeed}${str_tab}${font_green2}坏道: ${bad_sector_detail}${font_end2}"
+        fi
+
+        # 休眠中提示（休眠且未能获取 SMART 数据时显示）
+        if [ "$disk_standby" = "1" ] && [ "$smart_success" != "1" ]; then
+            result="${result}${str_linefeed}${str_tab}状态: 休眠中"
         fi
 
     done
@@ -1900,11 +1961,18 @@ function send(){
 	fi
 
 	if [ -z "$1" ] && [ ! -z "$router_storage" ] && [ "$router_storage" -eq "1" ]; then
-      local storage_info=$(get_storage_info)
+      disk_health_anomaly=0
+      local storage_tmpfile="${dir}storage_info_$$.tmp"
+      get_storage_info > "$storage_tmpfile"
+      local storage_info=$(cat "$storage_tmpfile")
+      rm -f "$storage_tmpfile"
       if [ ! -z "$storage_info" ]; then
           local send_content="${send_content}${str_splitline}${str_title_start}${font_blue} 设备存储${font_end}${str_title_end}${storage_info}"
       else
           local send_content="${send_content}${str_splitline}${str_title_start}${font_red} 设备存储${font_end}${str_title_end}${str_linefeed}${str_tab}无法获取存储信息"
+      fi
+      if [ "$disk_health_anomaly" = "1" ]; then
+          send_title="磁盘异常 ${send_title}"
       fi
   fi
 
@@ -1969,6 +2037,7 @@ trapCleanup() {
     flock -u 200
     rm -f "$lock_file"
     remove_pushbot_cron
+    nft delete table inet pushbot_blacklist >/dev/null 2>&1
     logger -t pushbot "守护进程已停止，清理锁文件完成"
 }
 #捕获 EXIT(正常退出), INT(Ctrl+C), TERM(kill默认信号)

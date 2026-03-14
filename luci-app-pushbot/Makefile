@@ -8,7 +8,7 @@ PKG_MAINTAINER:=tty228 <tty228@yeah.net>  zzsj0928
 
 LUCI_TITLE:=LuCI support for Pushbot
 LUCI_PKGARCH:=all
-LUCI_DEPENDS:=+iputils-arping +curl +jq +aes-tool
+LUCI_DEPENDS:=+bash +iputils-arping +curl +jq +aes-tool +smartmontools
 
 
 define Package/$(PKG_NAME)/install
