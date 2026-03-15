@@ -28,17 +28,17 @@ define Package/$(PKG_NAME)/config
 		  Adds approximately 1.8MB (full) to the package size.
 endef
 
-define Build/Prepare
-	$(call Build/Prepare/Default)
-ifeq ($(CONFIG_LUCI_APP_PUSHBOT_INCLUDE_OUI_DATA),y)
-	$(info >>> Downloading IEEE OUI database...)
-	curl -sS --retry 3 -m 120 -o $(PKG_BUILD_DIR)/oui_raw.txt \
-		https://standards-oui.ieee.org/oui/oui.txt || \
-		{ echo "ERROR: Failed to download OUI database"; exit 1; }
-	grep "base 16" $(PKG_BUILD_DIR)/oui_raw.txt > $(PKG_BUILD_DIR)/oui_base.txt
-	rm -f $(PKG_BUILD_DIR)/oui_raw.txt
-	@echo ">>> OUI database: $$(wc -l < $(PKG_BUILD_DIR)/oui_base.txt) entries"
-endif
+define Build/Prepare/luci-app-pushbot
+	if [ "$(CONFIG_LUCI_APP_PUSHBOT_INCLUDE_OUI_DATA)" = "y" ]; then \
+		echo ">>> Downloading IEEE OUI database..."; \
+		curl -sS --retry 3 -m 120 -o $(PKG_BUILD_DIR)/oui_raw.txt \
+			https://standards-oui.ieee.org/oui/oui.txt || \
+			{ echo "ERROR: Failed to download OUI database"; exit 1; }; \
+		mkdir -p $(PKG_BUILD_DIR)/root/usr/bin/pushbot; \
+		grep "base 16" $(PKG_BUILD_DIR)/oui_raw.txt > $(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt; \
+		rm -f $(PKG_BUILD_DIR)/oui_raw.txt; \
+		echo ">>> OUI database ready"; \
+	fi
 endef
 
 
@@ -47,10 +47,6 @@ define Package/$(PKG_NAME)/install
     $(INSTALL_DIR) $(1)/usr/bin
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/pushbot  $(1)/usr/bin/pushbot/pushbot
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot  $(1)/etc/init.d/pushbot
-ifeq ($(CONFIG_LUCI_APP_PUSHBOT_INCLUDE_OUI_DATA),y)
-    $(INSTALL_DIR) $(1)/usr/bin/pushbot
-    $(INSTALL_DATA) $(PKG_BUILD_DIR)/oui_base.txt $(1)/usr/bin/pushbot/oui_base.txt
-endif
 endef
 
 define Package/$(PKG_NAME)/conffiles
