@@ -175,7 +175,7 @@ function diy_send(){
       local bark_encryption_url="${bark_srv}/push"
       # 判断是否启用加密
       if [ "${bark_encryption_enable}" = "1" ]; then
-        # ========== 加密分支（使用 aes-tool）==========
+        # ========== 加密分支 ==========
         # 删除 device_keys，只保留推送内容
         jq -c 'del(.device_keys)' "$rawFile" > "$contentFile"
         # 读取要加密的内容
@@ -185,30 +185,68 @@ function diy_send(){
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密内容为空" >> ${logfile}
           plaintext="加密内容为空!"
         fi
-        # 准备加密参数
-        local iv_hex="${bark_encryption_iv}"
-        # ECB 模式不需要真实 IV，用全0占位
-        if [ "${bark_encryption_mode}" = "ecb" ]; then
-          iv_hex="00000000000000000000000000000000"
+
+        # ASCII 字符串转 hex（纯 bash，不依赖 od/xxd）
+        str_to_hex() {
+          local str="$1" i hex=""
+          for ((i=0; i<${#str}; i++)); do
+            hex="${hex}$(printf '%02x' "'${str:$i:1}")"
+          done
+          echo "$hex"
+        }
+
+        local ciphertext=""
+        local encrypt_status=1
+        local temp_cipher=""
+
+        if [ "${bark_encryption_mode}" = "gcm" ]; then
+          # ===== GCM 模式：需要 aes-tool =====
+          if ! command -v /usr/bin/aes-tool >/dev/null 2>&1; then
+            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】GCM 加密需要安装 aes-tool，请安装或切换为 CBC/ECB 模式" >> ${logfile}
+            rm -f "$contentFile" "$finalJsonFile"
+            return 1
+          fi
+          local iv_hex="${bark_encryption_iv}"
+          temp_cipher=$(mktemp)
+          execLog=$(/usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_hex}" "${contentFile}" "${temp_cipher}" --ascii 2>&1)
+          encrypt_status=$?
+          ciphertext=$(cat "$temp_cipher")
+          rm -f "$temp_cipher"
+        else
+          # ===== CBC/ECB 模式：使用 openssl =====
+          if ! command -v openssl >/dev/null 2>&1; then
+            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】CBC/ECB 加密需要 openssl，请安装 openssl-util" >> ${logfile}
+            rm -f "$contentFile" "$finalJsonFile"
+            return 1
+          fi
+          local key_hex=$(str_to_hex "${bark_encryption_key}")
+          local openssl_cipher=""
+          case "${bark_encryption_algo}" in
+            128) openssl_cipher="aes-128-${bark_encryption_mode}" ;;
+            192) openssl_cipher="aes-192-${bark_encryption_mode}" ;;
+            256) openssl_cipher="aes-256-${bark_encryption_mode}" ;;
+          esac
+          if [ "${bark_encryption_mode}" = "ecb" ]; then
+            ciphertext=$(openssl enc -${openssl_cipher} -a -A -K "${key_hex}" -in "${contentFile}" 2>&1)
+            encrypt_status=$?
+          else
+            local iv_hex=$(str_to_hex "${bark_encryption_iv}")
+            ciphertext=$(openssl enc -${openssl_cipher} -a -A -K "${key_hex}" -iv "${iv_hex}" -in "${contentFile}" 2>&1)
+            encrypt_status=$?
+          fi
         fi
-        # 加密
-        temp_cipher=$(mktemp)
-        execLog=$(/usr/bin/aes-tool   enc   "${bark_encryption_mode}"   "${bark_encryption_algo}"   "${bark_encryption_key}" "${iv_hex}" "${contentFile}"   "${temp_cipher}"  --ascii 2>&1)
-        local encrypt_status=$?
-        # 执行加密
-        local ciphertext=$(cat "$temp_cipher")
-        rm -f "$temp_cipher"
+
         # 检查加密结果
         if [ $encrypt_status -ne 0 ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密命令失败 (退出码: ${encrypt_status})" >> ${logfile}
-          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】错误信息: ${execLog}" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】错误信息: ${ciphertext}" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile" "$temp_cipher"
           return 1
         fi
 
         if [ -z "$ciphertext" ]; then
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密结果为空" >> ${logfile}
-          rm -f "$contentFile" "$finalJsonFile"
+          rm -f "$contentFile" "$finalJsonFile" "$temp_cipher"
           return 1
         fi
         # 清理密文（移除换行符和空格）

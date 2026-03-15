@@ -143,8 +143,9 @@ a = s:taboption("basic", ListValue, "bark_encryption_mode", translate("加密模
 a:depends("bark_encryption_enable", "1")
 a:value("cbc", "CBC (推荐)")
 a:value("ecb", "ECB (不安全/无IV)")
-a:value("gcm", "GCM")
+a:value("gcm", "GCM (需安装 aes-tool)")
 a.default = "cbc"
+a.description = translate("CBC/ECB 使用系统自带 openssl 加密<br>GCM 需要额外安装 aes-tool")
 
 -- Key 输入框
 a = s:taboption("basic", Value, "bark_encryption_key", translate('Key (密钥)'),
@@ -278,7 +279,7 @@ a:value("",translate("关闭"))
 a:value("1",translate("简化版"))
 a:value("2",translate("完整版"))
 a:value("3",translate("网络查询"))
-a.description = translate("需下载 4.36m 原始数据，处理后完整版约 1.2M，简化版约 250kb <br/>若无梯子，请勿使用网络查询")
+a.description = translate("需下载 4.36m 原始数据，处理后完整版约 1.8M，简化版约 250kb <br/>若无梯子，请勿使用网络查询")
 
 local btn_update = s:taboption("basic", Button, "_update_oui", translate("MAC设备信息"))
 btn_update.inputtitle = translate("更新厂商数据库")

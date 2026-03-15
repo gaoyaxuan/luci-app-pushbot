@@ -35,9 +35,7 @@ jobs:
       - name: Prepare Feed Directory
         run: |
           mkdir -p openwrt-feed/luci-app-pushbot
-          mkdir -p openwrt-feed/aes-tool
           cp -r luci-app-pushbot/* openwrt-feed/luci-app-pushbot/
-          cp -r aes-tool/* openwrt-feed/aes-tool/
           chmod +x openwrt-feed/luci-app-pushbot/root/etc/init.d/pushbot || true
           chmod +x openwrt-feed/luci-app-pushbot/root/usr/bin/pushbot/pushbot || true
       - name: Build Packages
@@ -73,16 +71,14 @@ jobs:
 
             ### 快速安装
 
-            1. 下载 `luci-app-pushbot` (noarch，所有架构通用)
-            2. 下载 `aes-tool` (选择你的设备架构)
-            3. 上传到路由器并安装
+            下载 `luci-app-pushbot`（所有架构通用）并上传到路由器安装：
 
             ```bash
             # IPK 安装
-            opkg install luci-app-pushbot-*.ipk aes-tool-*.ipk
+            opkg install luci-app-pushbot-*.ipk
 
             # APK 安装（OpenWrt 24.10+）
-            apk add --allow-untrusted luci-app-pushbot-*.apk aes-tool-*.apk
+            apk add --allow-untrusted luci-app-pushbot-*.apk
             ```
 
             ### luci-app-pushbot
@@ -91,7 +87,17 @@ jobs:
             - `luci-app-pushbot-openwrt-24.10.tar.gz` — 稳定版（推荐）
             - `luci-app-pushbot-SNAPSHOT.tar.gz` — 开发版
 
-            ### aes-tool 支持的架构
+            ### aes-tool（可选）
+
+            仅在 Bark 推送使用 **GCM 加密模式**时需要安装。
+            CBC/ECB 加密使用系统自带的 openssl，无需额外安装。
+
+            ```bash
+            # 按需安装（仅 GCM 加密）
+            opkg install aes-tool-*.ipk
+            # 或
+            apk add --allow-untrusted aes-tool-*.apk
+            ```
 
             | 类型 | 架构 | 典型设备 |
             |------|------|----------|
@@ -122,7 +128,7 @@ jobs:
 
             | SDK 版本 | 说明 |
             |----------|------|
-            | **openwrt-24.10** | 稳定版 ⭐ |
+            | **openwrt-24.10** | 稳定版 |
             | **SNAPSHOT** | 开发版 |
 
   # ========== Job 2: aes-tool (C 编译，按架构) ==========
