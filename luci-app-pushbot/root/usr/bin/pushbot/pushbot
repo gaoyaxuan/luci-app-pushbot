@@ -199,33 +199,29 @@ function diy_send(){
         local encrypt_status=1
         local temp_cipher=""
 
-        if [ "${bark_encryption_mode}" = "gcm" ]; then
-          # ===== GCM 模式：需要 aes-tool =====
-          if ! command -v /usr/bin/aes-tool >/dev/null 2>&1; then
-            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】GCM 加密需要安装 aes-tool，请安装或切换为 CBC/ECB 模式" >> ${logfile}
-            rm -f "$contentFile" "$finalJsonFile"
-            return 1
-          fi
+        if command -v /usr/bin/aes-tool >/dev/null 2>&1; then
+          # ===== 有 aes-tool：所有模式统一使用 aes-tool =====
           local iv_hex="${bark_encryption_iv}"
+          [ "${bark_encryption_mode}" = "ecb" ] && iv_hex="00000000000000000000000000000000"
           temp_cipher=$(mktemp)
           execLog=$(/usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_hex}" "${contentFile}" "${temp_cipher}" --ascii 2>&1)
           encrypt_status=$?
           ciphertext=$(cat "$temp_cipher")
           rm -f "$temp_cipher"
+        elif [ "${bark_encryption_mode}" = "gcm" ]; then
+          # ===== 无 aes-tool + GCM：无法完成 =====
+          echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】GCM 加密需要安装 aes-tool，请安装或切换为 CBC/ECB 模式" >> ${logfile}
+          rm -f "$contentFile" "$finalJsonFile"
+          return 1
         else
-          # ===== CBC/ECB 模式：使用 openssl =====
+          # ===== 无 aes-tool + CBC/ECB：fallback 到 openssl =====
           if ! command -v openssl >/dev/null 2>&1; then
-            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】CBC/ECB 加密需要 openssl，请安装 openssl-util" >> ${logfile}
+            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】加密需要 openssl 或 aes-tool，请至少安装其中一个" >> ${logfile}
             rm -f "$contentFile" "$finalJsonFile"
             return 1
           fi
           local key_hex=$(str_to_hex "${bark_encryption_key}")
-          local openssl_cipher=""
-          case "${bark_encryption_algo}" in
-            128) openssl_cipher="aes-128-${bark_encryption_mode}" ;;
-            192) openssl_cipher="aes-192-${bark_encryption_mode}" ;;
-            256) openssl_cipher="aes-256-${bark_encryption_mode}" ;;
-          esac
+          local openssl_cipher="aes-${bark_encryption_algo}-${bark_encryption_mode}"
           if [ "${bark_encryption_mode}" = "ecb" ]; then
             ciphertext=$(openssl enc -${openssl_cipher} -a -A -K "${key_hex}" -in "${contentFile}" 2>&1)
             encrypt_status=$?
