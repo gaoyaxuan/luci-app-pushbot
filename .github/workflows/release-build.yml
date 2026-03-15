@@ -17,8 +17,117 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  build:
-    name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
+  # ========== Job 1: luci-app-pushbot (noarch，只编译一次) ==========
+  build-luci:
+    name: Build luci-app-pushbot (${{ matrix.sdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk:
+          - openwrt-24.10
+          - SNAPSHOT
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Prepare Feed Directory
+        run: |
+          mkdir -p openwrt-feed/luci-app-pushbot
+          mkdir -p openwrt-feed/aes-tool
+          cp -r luci-app-pushbot/* openwrt-feed/luci-app-pushbot/
+          cp -r aes-tool/* openwrt-feed/aes-tool/
+          chmod +x openwrt-feed/luci-app-pushbot/root/etc/init.d/pushbot || true
+          chmod +x openwrt-feed/luci-app-pushbot/root/usr/bin/pushbot/pushbot || true
+      - name: Build Packages
+        uses: sbwml/openwrt-gh-action-sdk@go1.25
+        env:
+          ARCH: x86_64-${{ matrix.sdk }}
+          FEED_DIR: ${{ github.workspace }}/openwrt-feed
+          FEEDNAME: packages_ci
+          PACKAGES: luci-app-pushbot
+          NO_REFRESH_CHECK: true
+      - name: Create compress files
+        run: |
+          # 只打包 luci-app-pushbot（noarch 包）
+          mkdir -p upload
+          find bin/packages/ -name "luci-app-pushbot*" -exec cp {} upload/ \;
+          tar -zcvf luci-app-pushbot-${{ matrix.sdk }}.tar.gz -C upload .
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-pushbot-${{ matrix.sdk }}
+          path: upload/*
+      - name: Upload to release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          replacesArtifacts: true
+          prerelease: false
+          artifacts: "luci-app-pushbot-${{ matrix.sdk }}.tar.gz"
+          body: |
+            ## LuCI App Pushbot ${{ github.ref_name }}
+
+            ### 快速安装
+
+            1. 下载 `luci-app-pushbot` (noarch，所有架构通用)
+            2. 下载 `aes-tool` (选择你的设备架构)
+            3. 上传到路由器并安装
+
+            ```bash
+            # IPK 安装
+            opkg install luci-app-pushbot-*.ipk aes-tool-*.ipk
+
+            # APK 安装（OpenWrt 24.10+）
+            apk add --allow-untrusted luci-app-pushbot-*.apk aes-tool-*.apk
+            ```
+
+            ### luci-app-pushbot
+
+            架构无关包，所有设备通用，按 SDK 版本选择：
+            - `luci-app-pushbot-openwrt-24.10.tar.gz` — 稳定版（推荐）
+            - `luci-app-pushbot-SNAPSHOT.tar.gz` — 开发版
+
+            ### aes-tool 支持的架构
+
+            | 类型 | 架构 | 典型设备 |
+            |------|------|----------|
+            | x86 | `x86_64` | 软路由 |
+            | ARM64 | `aarch64_generic` | 通用 ARM64 |
+            | ARM64 | `aarch64_cortex-a53` | 树莓派3 等 |
+            | ARM64 | `aarch64_cortex-a72` | 树莓派4 等 |
+            | ARM32 | `arm_cortex-a7` | 常见 ARM7 设备 |
+            | ARM32 | `arm_cortex-a7_neon-vfpv4` | IPQ40xx 等 |
+            | ARM32 | `arm_cortex-a9` / `a9_neon` | Marvell 等 |
+            | ARM32 | `arm_cortex-a15_neon-vfpv4` | IPQ806x 等 |
+            | MIPS | `mipsel_24kc` | MT7621 (小米/红米) |
+            | MIPS | `mipsel_74kc` | MT7620 |
+            | MIPS | `mips_24kc` | AR71xx/QCA |
+            | RISC-V | `riscv64_riscv64` | RISC-V 64位 |
+
+            ### 不知道选哪个？
+
+            SSH 到路由器执行：
+            ```bash
+            # OpenWrt 旧版
+            opkg print-architecture
+            # OpenWrt 24.10+
+            apk --print-arch
+            ```
+
+            ---
+
+            | SDK 版本 | 说明 |
+            |----------|------|
+            | **openwrt-24.10** | 稳定版 ⭐ |
+            | **SNAPSHOT** | 开发版 |
+
+  # ========== Job 2: aes-tool (C 编译，按架构) ==========
+  build-aes-tool:
+    name: Build aes-tool ${{ matrix.arch }}-${{ matrix.sdk }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -47,44 +156,33 @@ jobs:
           fetch-depth: 1
       - name: Prepare Feed Directory
         run: |
-          mkdir -p openwrt-feed/luci-app-pushbot
           mkdir -p openwrt-feed/aes-tool
-          
-          # 复制 luci-app-pushbot
-          cp -r luci-app-pushbot/* openwrt-feed/luci-app-pushbot/
-          chmod +x openwrt-feed/luci-app-pushbot/root/etc/init.d/pushbot || true
-          chmod +x openwrt-feed/luci-app-pushbot/root/usr/bin/pushbot/pushbot || true
-          
-          # 复制 aes-tool
           cp -r aes-tool/* openwrt-feed/aes-tool/
-
       - name: Build Packages
         uses: sbwml/openwrt-gh-action-sdk@go1.25
         env:
           ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
           FEED_DIR: ${{ github.workspace }}/openwrt-feed
           FEEDNAME: packages_ci
-          PACKAGES: aes-tool luci-app-pushbot  # 编译两个包
+          PACKAGES: aes-tool
           NO_REFRESH_CHECK: true
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.arch }}-${{ matrix.sdk }}
-          path: |
-            bin/packages/${{ matrix.arch }}/packages_ci/*.apk
-            bin/packages/riscv64_generic/packages_ci/*.apk
-            bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
       - name: Create compress files
         continue-on-error: true
         run: |
+          mkdir -p upload
+          # 处理 riscv64 路径特殊情况
           if [ "${{ matrix.arch }}" = "riscv64_riscv64" ] && [ "${{ matrix.sdk }}" = "SNAPSHOT" ]; then
-            find "bin/packages/riscv64_generic/packages_ci" -type d -empty -delete
-            tar -zcvf luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/riscv64_generic/ packages_ci
+            find bin/packages/riscv64_generic/packages_ci/ -name "aes-tool*" -exec cp {} upload/ \; 2>/dev/null
           else
-            find "bin/packages/${{ matrix.arch }}/packages_ci" -type d -empty -delete
-            tar -zcvf luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
+            find bin/packages/${{ matrix.arch }}/packages_ci/ -name "aes-tool*" -exec cp {} upload/ \; 2>/dev/null
           fi
-      - name: Upload packages
+          tar -zcvf aes-tool-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C upload .
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aes-tool-${{ matrix.arch }}-${{ matrix.sdk }}
+          path: upload/*
+      - name: Upload to release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
@@ -92,75 +190,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           prerelease: false
-          artifacts: "luci-app-pushbot-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
-          body: |
-            ## 🎉 LuCI App Pushbot ${{ github.ref_name }}
-
-            ✅ **全架构编译完成！**
-
-            ### 📦 快速安装
-
-            1. 在下方 **Assets** 中找到你的设备架构
-            2. 下载对应的 `.ipk` 或 `.apk` 文件
-            3. 上传到路由器并安装
-
-            ```bash
-            # IPK 安装（旧版 OpenWrt）
-            opkg install luci-app-pushbot-*.ipk  aes-tool-*.ipk
-
-            # APK 安装（OpenWrt 24.10+）
-            apk add --allow-untrusted luci-app-pushbot-*.apk aes-tool-*.apk
-            ```
-
-            ### 🏗️ 支持的架构
-
-            #### 🖥️ x86 架构
-            - `x86_64` - 64位 x86 软路由
-
-            #### 📱 ARM 64位 (aarch64)
-            - `aarch64_generic` - 通用 ARM64
-            - `aarch64_cortex-a53` - Cortex-A53 (树莓派3等)
-            - `aarch64_cortex-a72` - Cortex-A72 (树莓派4等)
-
-            #### 📱 ARM 32位
-            - `arm_cortex-a7` / `arm_cortex-a7_neon-vfpv4`
-            - `arm_cortex-a9` / `arm_cortex-a9_neon`
-            - `arm_cortex-a15_neon-vfpv4`
-
-            #### 🌐 MIPS 架构
-            - `mipsel_24kc` - MT7621路由器 (小米、红米等)
-            - `mipsel_74kc` - MT7620路由器
-            - `mips_24kc` - AR71xx/QCA路由器
-
-            #### 🆕 其他架构
-            - `riscv64_riscv64` - RISC-V 64位
-
-            ### 📋 SDK 版本说明
-
-            | 版本 | 说明 | 推荐 |
-            |------|------|------|
-            | **openwrt-24.10** | 稳定版，经过充分测试 | ⭐ 推荐 |
-            | **SNAPSHOT** | 开发版，包含最新功能 | 尝鲜 |
-
-            ### 💡 不知道选哪个？
-
-            **方法1**: SSH 到路由器执行
-            ```bash
-            opkg print-architecture
-
-            apk --print-arch
-            ```
-
-            **方法2**: 查看路由器型号
-            - 小米/红米路由器 → `mipsel_24kc`
-            - 树莓派4 → `aarch64_cortex-a72`
-            - x86软路由 → `x86_64`
-
-            **方法3**: 查看 OpenWrt 版本
-            ```bash
-            cat /etc/openwrt_release
-            ```
-
-            ---
-
-            **Star ⭐ 本项目可以获取更新通知！**
+          artifacts: "aes-tool-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
