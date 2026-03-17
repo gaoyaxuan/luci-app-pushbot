@@ -11,6 +11,12 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+bash +iputils-arping +curl +jq +smartmontools \
 	+LUCI_APP_PUSHBOT_ENABLE_AES_TOOL:aes-tool
 
+PKG_CONFIG_DEPENDS:= \
+	CONFIG_LUCI_APP_PUSHBOT_ENABLE_AES_TOOL \
+	CONFIG_LUCI_APP_PUSHBOT_OUI_NONE \
+	CONFIG_LUCI_APP_PUSHBOT_OUI_LITE \
+	CONFIG_LUCI_APP_PUSHBOT_OUI_FULL
+
 define Package/$(PKG_NAME)/config
 	config LUCI_APP_PUSHBOT_ENABLE_AES_TOOL
 		bool "Include aes-tool (required for Bark GCM encryption)"
