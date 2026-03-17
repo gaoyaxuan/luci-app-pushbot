@@ -284,6 +284,8 @@ a.description = translate("需下载 4.36m 原始数据，处理后完整版约 
 local btn_update = s:taboption("basic", Button, "_update_oui", translate("MAC设备信息"))
 btn_update.inputtitle = translate("更新厂商数据库")
 btn_update.inputstyle = "reload"  -- 或者用 "apply"
+btn_update:depends("oui_data","1")
+btn_update:depends("oui_data","2")
 btn_update.description = translate("从 IEEE 官网下载最新的 MAC 地址厂商信息")
 function btn_update.write(self, section)
 	luci.sys.call("/usr/bin/pushbot/pushbot update_oui >/dev/null 2>&1 &")

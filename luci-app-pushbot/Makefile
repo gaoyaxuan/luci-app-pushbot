@@ -19,34 +19,68 @@ define Package/$(PKG_NAME)/config
 		  Install aes-tool for AES-GCM encryption support in Bark push.
 		  CBC/ECB encryption uses system openssl and does not need this.
 
-	config LUCI_APP_PUSHBOT_INCLUDE_OUI_DATA
-		bool "Include built-in MAC vendor database (OUI)"
-		default n
+	choice
+		prompt "Built-in MAC vendor database (OUI)"
+		default LUCI_APP_PUSHBOT_OUI_NONE
 		help
-		  Download and embed IEEE OUI data during compilation.
+		  Select whether to include a pre-built MAC vendor (OUI) database.
 		  This avoids needing to download it on the router at runtime.
-		  Adds approximately 1.8MB (full) to the package size.
+
+	config LUCI_APP_PUSHBOT_OUI_NONE
+		bool "None"
+		help
+		  Do not include OUI database. Users can download it at runtime.
+
+	config LUCI_APP_PUSHBOT_OUI_LITE
+		bool "Simplified (~250KB)"
+		help
+		  Include simplified OUI database with popular vendors only.
+
+	config LUCI_APP_PUSHBOT_OUI_FULL
+		bool "Full (~1.8MB)"
+		help
+		  Include the complete OUI database with all vendors.
+
+	endchoice
 endef
 
 define Build/Prepare/luci-app-pushbot
-	if [ "$(CONFIG_LUCI_APP_PUSHBOT_INCLUDE_OUI_DATA)" = "y" ]; then \
+	if [ "$(CONFIG_LUCI_APP_PUSHBOT_OUI_LITE)" = "y" ] || \
+	   [ "$(CONFIG_LUCI_APP_PUSHBOT_OUI_FULL)" = "y" ]; then \
 		echo ">>> Downloading IEEE OUI database..."; \
 		curl -sS --retry 3 -m 120 -o $(PKG_BUILD_DIR)/oui_raw.txt \
 			https://standards-oui.ieee.org/oui/oui.txt || \
 			{ echo "ERROR: Failed to download OUI database"; exit 1; }; \
 		mkdir -p $(PKG_BUILD_DIR)/root/usr/bin/pushbot; \
-		grep "base 16" $(PKG_BUILD_DIR)/oui_raw.txt > $(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt; \
+		if [ "$(CONFIG_LUCI_APP_PUSHBOT_OUI_LITE)" = "y" ]; then \
+			grep "base 16" $(PKG_BUILD_DIR)/oui_raw.txt | \
+				grep -iE "apple|aruba|asus|huawei|xiaomi|samsung|lg|htc|oneplus|oppo|meizu|cisco|hp|dell|lenovo|intel|tp-link|dlink|netgear|tenda|hiwifi|mercury|fast|ubq|h3c|vmware|belkin|buffalo|nokia" \
+				> $(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt; \
+			sed -i '/option oui_data/d' $(PKG_BUILD_DIR)/root/etc/config/pushbot; \
+			printf '\toption oui_data '\''1'\''\n' >> $(PKG_BUILD_DIR)/root/etc/config/pushbot; \
+			echo ">>> OUI database ready (simplified)"; \
+		else \
+			grep "base 16" $(PKG_BUILD_DIR)/oui_raw.txt \
+				> $(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt; \
+			sed -i '/option oui_data/d' $(PKG_BUILD_DIR)/root/etc/config/pushbot; \
+			printf '\toption oui_data '\''2'\''\n' >> $(PKG_BUILD_DIR)/root/etc/config/pushbot; \
+			echo ">>> OUI database ready (full)"; \
+		fi; \
 		rm -f $(PKG_BUILD_DIR)/oui_raw.txt; \
-		echo ">>> OUI database ready"; \
+	else \
+		sed -i '/option oui_data/d' $(PKG_BUILD_DIR)/root/etc/config/pushbot; \
 	fi
 endef
 
 
 define Package/$(PKG_NAME)/install
     $(INSTALL_DIR) $(1)/etc/init.d
-    $(INSTALL_DIR) $(1)/usr/bin
+    $(INSTALL_DIR) $(1)/usr/bin/pushbot
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/pushbot  $(1)/usr/bin/pushbot/pushbot
     $(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/pushbot  $(1)/etc/init.d/pushbot
+    if [ -f "$(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt" ]; then \
+        $(INSTALL_DATA) $(PKG_BUILD_DIR)/root/usr/bin/pushbot/oui_base.txt $(1)/usr/bin/pushbot/oui_base.txt; \
+    fi
 endef
 
 define Package/$(PKG_NAME)/conffiles
