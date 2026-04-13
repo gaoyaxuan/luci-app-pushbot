@@ -581,6 +581,18 @@ a:value("wake",translate("唤醒后检测"))
 a:depends("router_storage","1")
 a.description = translate("当硬盘处于休眠/待机状态时的处理方式<br/>跳过检测不会唤醒硬盘，显示\"休眠中\"<br/>唤醒检测会导致硬盘被唤醒")
 
+a=s:taboption("crontab", ListValue,"disk_skip_force_count",translate("跳过N次后强制检测"))
+a.rmempty = true
+a.default = "0"
+a:value("0",translate("不启用"))
+a:value("3",translate("3 次"))
+a:value("5",translate("5 次"))
+a:value("10",translate("10 次"))
+a:value("20",translate("20 次"))
+a:value("30",translate("30 次"))
+a:depends("disk_standby_action","skip")
+a.description = translate("跳过检测达到设定次数后，强制唤醒硬盘检测一次SMART状态<br/>检测完成后重新开始计数<br/>设为\"不启用\"则始终跳过")
+
 a=s:taboption("crontab", Value,"google_check_timeout",translate("全球互联检测超时时间"))
 a.rmempty = true
 a.optional = false

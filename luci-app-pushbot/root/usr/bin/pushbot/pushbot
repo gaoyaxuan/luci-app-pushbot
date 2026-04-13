@@ -71,7 +71,7 @@ function read_config(){
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
 	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv"  \
 	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
-	"router_storage" "disk_standby_action"
+	"router_storage" "disk_standby_action" "disk_skip_force_count"
 
   if command -v opkg >/dev/null 2>&1; then
     	for str_version in "wrtbwmon" "iputils-arping" "curl" "iw"; do
@@ -1589,6 +1589,7 @@ get_storage_info() {
 
         local disk_standby=0
         local standby_smart_ok=0
+        local force_wake=0
         if [ "$has_smart" = "1" ]; then
             # smartctl -n standby 不会唤醒磁盘
             # 部分硬盘即使休眠也能通过缓存返回 SMART 数据
@@ -1602,7 +1603,28 @@ get_storage_info() {
                     smartctl -H "/dev/$disk" >/dev/null 2>&1
                     sleep 1
                     disk_standby=0
+                elif [ "$disk_standby_action" = "skip" ] && [ ! -z "$disk_skip_force_count" ] && [ "$disk_skip_force_count" -gt 0 ] 2>/dev/null; then
+                    # 跳过计数：达到设定次数后强制唤醒检测一次
+                    local counter_file="${dir}disk_skip_counter_${disk}"
+                    local current_count=0
+                    [ -f "$counter_file" ] && current_count=$(cat "$counter_file" 2>/dev/null)
+                    [ -z "$current_count" ] && current_count=0
+                    current_count=$((current_count + 1))
+                    if [ "$current_count" -ge "$disk_skip_force_count" ]; then
+                        # 达到次数，强制唤醒检测
+                        smartctl -H "/dev/$disk" >/dev/null 2>&1
+                        sleep 1
+                        disk_standby=0
+                        force_wake=1
+                        echo "0" > "$counter_file"
+                    else
+                        echo "$current_count" > "$counter_file"
+                    fi
                 fi
+            else
+                # 磁盘未休眠，重置计数器
+                local counter_file="${dir}disk_skip_counter_${disk}"
+                [ -f "$counter_file" ] && echo "0" > "$counter_file"
             fi
         fi
 
@@ -1850,7 +1872,16 @@ get_storage_info() {
 
         # 休眠中提示（休眠且未能获取 SMART 数据时显示）
         if [ "$disk_standby" = "1" ] && [ "$smart_success" != "1" ]; then
-            result="${result}${str_linefeed}${str_tab}状态: 休眠中"
+            local counter_file="${dir}disk_skip_counter_${disk}"
+            local skip_info=""
+            if [ ! -z "$disk_skip_force_count" ] && [ "$disk_skip_force_count" -gt 0 ] 2>/dev/null && [ -f "$counter_file" ]; then
+                local current_count=$(cat "$counter_file" 2>/dev/null)
+                [ -z "$current_count" ] && current_count=0
+                skip_info=" (已跳过${current_count}/${disk_skip_force_count}次)"
+            fi
+            result="${result}${str_linefeed}${str_tab}状态: 休眠中${skip_info}"
+        elif [ "$force_wake" = "1" ]; then
+            result="${result}${str_linefeed}${str_tab}状态: 定期唤醒检测"
         fi
 
     done
