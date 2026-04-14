@@ -46,12 +46,16 @@ jobs:
           FEEDNAME: packages_ci
           PACKAGES: luci-app-pushbot
           NO_REFRESH_CHECK: true
-      - name: Create compress files
+      - name: Collect and rename packages
         run: |
-          # 只打包 luci-app-pushbot（noarch 包）
           mkdir -p upload
           find bin/packages/ -name "luci-app-pushbot*" -exec cp {} upload/ \;
-          tar -zcvf luci-app-pushbot-${{ matrix.sdk }}.tar.gz -C upload .
+          cd upload
+          for f in *; do
+            ext="${f##*.}"
+            base="${f%.*}"
+            mv "$f" "${base}_${{ matrix.sdk }}.${ext}"
+          done
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -65,7 +69,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           prerelease: false
-          artifacts: "luci-app-pushbot-${{ matrix.sdk }}.tar.gz"
+          artifacts: "upload/*"
           body: |
             ## LuCI App Pushbot ${{ github.ref_name }}
 
@@ -83,9 +87,7 @@ jobs:
 
             ### luci-app-pushbot
 
-            架构无关包，所有设备通用，按 SDK 版本选择：
-            - `luci-app-pushbot-openwrt-24.10.tar.gz` — 稳定版（推荐）
-            - `luci-app-pushbot-SNAPSHOT.tar.gz` — 开发版
+            架构无关包，所有设备通用，按 SDK 版本选择对应的 ipk/apk 文件直接安装。
 
             ### aes-tool（可选）
 
@@ -172,7 +174,7 @@ jobs:
           FEEDNAME: packages_ci
           PACKAGES: aes-tool
           NO_REFRESH_CHECK: true
-      - name: Create compress files
+      - name: Collect and rename packages
         continue-on-error: true
         run: |
           mkdir -p upload
@@ -182,7 +184,12 @@ jobs:
           else
             find bin/packages/${{ matrix.arch }}/packages_ci/ -name "aes-tool*" -exec cp {} upload/ \; 2>/dev/null
           fi
-          tar -zcvf aes-tool-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C upload .
+          cd upload
+          for f in *; do
+            ext="${f##*.}"
+            base="${f%.*}"
+            mv "$f" "${base}_${{ matrix.sdk }}.${ext}"
+          done
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -196,4 +203,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           prerelease: false
-          artifacts: "aes-tool-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz"
+          artifacts: "upload/*"
