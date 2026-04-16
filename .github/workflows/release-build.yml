@@ -188,7 +188,7 @@ jobs:
           for f in *; do
             ext="${f##*.}"
             base="${f%.*}"
-            mv "$f" "${base}_${{ matrix.sdk }}.${ext}"
+            mv "$f" "${base}_${{ matrix.arch }}_${{ matrix.sdk }}.${ext}"
           done
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
