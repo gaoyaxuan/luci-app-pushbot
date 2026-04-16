@@ -71,7 +71,8 @@ function read_config(){
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
 	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv"  \
 	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
-	"router_storage" "disk_standby_action" "disk_skip_force_count"
+	"router_storage" "disk_standby_action" "disk_skip_force_count" \
+	"storage_err_enable" "storage_err_interval"
 
   if command -v opkg >/dev/null 2>&1; then
     	for str_version in "wrtbwmon" "iputils-arping" "curl" "iw"; do
@@ -1285,6 +1286,74 @@ function cputop(){
 	[ ! -z "$1" ] && echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！警报！！】 CPU 占用前三: ${logtop}" >> ${logfile}
 }
 
+# 存储错误日志检测
+function storage_error_check(){
+	[ -z "$storage_err_enable" ] || [ "$storage_err_enable" -ne "1" ] && return
+
+	# 默认推送间隔 24 小时
+	[ -z "$storage_err_interval" ] && storage_err_interval="24"
+	local interval_seconds=$((storage_err_interval * 3600))
+
+	# 通过 logread 扫描系统日志中的存储相关错误
+	local filtered_errors=$(logread 2>/dev/null | grep -iE \
+		"I/O error|Buffer I/O error|EXT[234]-fs error|BTRFS error|FAT-fs.*(error|panic)|f2fs error|remount.*read-only|UBI error|UBIFS error|mmc[0-9].*error|sd[a-z].*error|usb [0-9].*reset|USB disconnect|blk_update_request|SCSI error|medium error|unrecoverable read error" \
+		| tail -n 30)
+
+	[ -z "$filtered_errors" ] && return
+
+	# 提取错误签名：去掉 syslog 前缀和时间戳，规范化变量部分，只保留错误类型
+	local err_signatures=$(echo "$filtered_errors" | \
+		sed -E 's/^.*\]: //' | \
+		sed -E 's/\[[0-9.]+\] //' | \
+		sed -E 's/sector [0-9]+/sector N/g' | \
+		sed -E 's/dev [a-z]+[0-9]*/dev X/g' | \
+		sed -E 's/port [0-9]+/port N/g' | \
+		sort -u)
+
+	# 与已知错误签名对比，找出新增的错误类型
+	local new_signatures=""
+	if [ -f "${dir}storage_err_seen" ]; then
+		new_signatures=$(echo "$err_signatures" | grep -Fxvf ${dir}storage_err_seen)
+	else
+		new_signatures="$err_signatures"
+	fi
+
+	# 没有新的错误类型，跳过
+	[ -z "$new_signatures" ] && return
+
+	# 冷却期内不推送（但不更新 seen 文件，确保冷却结束后仍能检测到这些新错误）
+	if [ ! -z "$storage_err_cd_time" ] && [ "$((`date +%s` - $storage_err_cd_time))" -lt "$interval_seconds" ]; then
+		return
+	fi
+
+	# 更新已知错误签名文件
+	echo "$err_signatures" > ${dir}storage_err_seen
+
+	local new_count=$(echo "$new_signatures" | wc -l)
+	echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！警报！！】 检测到 ${new_count} 种新的存储错误类型" >> ${logfile}
+
+	# 取新增的错误签名作为推送内容（最多 5 条）
+	local err_display=""
+	echo "$new_signatures" | head -n 5 | while IFS= read -r line; do
+		[ ${#line} -gt 80 ] && line="${line:0:77}..."
+		err_display="${err_display}${str_linefeed}${str_tab}${line}"
+		echo "$err_display" > ${dir}storage_err_display_tmp
+	done
+	err_display=$(cat ${dir}storage_err_display_tmp 2>/dev/null)
+	rm -f ${dir}storage_err_display_tmp
+
+	if [ -z "$title" ]; then
+		title="存储异常报警！"
+	elif ( echo "$title" | grep -q "报警\|过高\|异常" ); then
+		title="设备报警！"
+	else
+		title="存储异常报警！"
+	fi
+	content="${content}${str_splitline}${str_title_start}${font_red} 存储异常${font_end}${str_title_end}${str_linefeed}${str_tab}检测到 ${new_count} 种新的存储错误${str_linefeed}${str_tab}错误信息：${err_display}${str_linefeed}${str_linefeed}${str_tab}${storage_err_interval} 小时内不再重复提醒"
+
+	storage_err_cd_time=`date +%s`
+}
+
 # 生成日志监控文件，避免后台影响 wait 语句
 function get_syslog(){
 	kill -9 `pgrep -f "logread -f -p notice"` 2>/dev/null
@@ -2160,6 +2229,9 @@ while [ "$pushbot_enable" -eq "1" ]; do
 
 	# CPU 检测
 	[ ! -f "${dir}send_enable.lock" ] && cpu_load
+
+	# 存储错误检测
+	[ ! -f "${dir}send_enable.lock" ] && storage_error_check
 
 	# 异常流量检测
 	[ ! -f "${dir}send_enable.lock" ] && get_client_usage

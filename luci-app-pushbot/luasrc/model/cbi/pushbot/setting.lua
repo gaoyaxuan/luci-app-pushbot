@@ -430,6 +430,19 @@ a.rmempty = true
 a:depends({client_usage_disturb="1"})
 a.description = translate("请输入设备 MAC")
 
+--StorageErrNoti
+a=s:taboption("content", Flag,"storage_err_enable",translate("存储异常报警"))
+a.default=0
+a.rmempty = true
+a.description = translate("监测系统日志中的存储相关错误（I/O错误、文件系统异常、USB断开等），检测到时推送报警")
+
+a= s:taboption("content", Value, "storage_err_interval", "报警推送间隔（小时）")
+a.default = "24"
+a.datatype="and(uinteger,min(1))"
+a.rmempty = true
+a:depends({storage_err_enable="1"})
+a.description = translate("同一错误在该时间段内不会重复推送，避免频繁打扰<br/>默认 24 小时")
+
 --LoginNoti
 a=s:taboption("content", Flag,"web_logged",translate("Web 登录提醒"))
 a.default=0
