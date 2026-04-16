@@ -1731,13 +1731,16 @@ get_storage_info() {
                     # 检查是否为 USB 设备
                     if grep -q "Unknown USB bridge\|specify device type" "$smart_tmp" 2>/dev/null; then
                         is_usb=1
-                        # 尝试不同的 USB 接口类型
-                        for usb_type in sat usbcypress usbjmicron usbprolific usbsunplus; do
+                        # 尝试不同的 USB 桥接类型（sat,12 用于仅支持12字节CDB的老芯片，scsi 用于USB-SCSI桥接）
+                        for usb_type in sat "sat,12" "sat,auto" usbcypress usbjmicron usbprolific usbsunplus scsi; do
                             smartctl $smart_nocheck_opt -d $usb_type -H -A "/dev/$disk" 2>/dev/null > "$smart_tmp"
                             if [ -s "$smart_tmp" ] && ! grep -q "Unknown USB bridge\|specify device type" "$smart_tmp"; then
                                 device_type="usb"
-                                grep -q "overall-health\|Health Status\|Temperature_Celsius\|Power_On_Hours" "$smart_tmp" && smart_success=1
-                                break
+                                # 拿到有效 SMART 数据才中断，否则继续尝试下一种类型
+                                if grep -q "overall-health\|Health Status\|Temperature_Celsius\|Power_On_Hours" "$smart_tmp"; then
+                                    smart_success=1
+                                    break
+                                fi
                             fi
                         done
                     else
