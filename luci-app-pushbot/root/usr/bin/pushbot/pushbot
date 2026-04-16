@@ -2207,7 +2207,7 @@ while [ "$pushbot_enable" -eq "1" ]; do
 		done
 	fi
 
-	if [ "$pushbot_ipv4" -ne "0" ] || [ "$pushbot_ipv6" -ne "0" ]; then
+	if [ ! -z "$pushbot_ipv4" ] && [ "$pushbot_ipv4" -ne "0" ] || [ ! -z "$pushbot_ipv6" ] && [ "$pushbot_ipv6" -ne "0" ]; then
 		rand_geturl
 		ip_changes
 	fi
