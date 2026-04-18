@@ -553,13 +553,62 @@ function getcpu(){
 	printf "%.01f%%" $(echo ${AT} ${BT}|awk '{print (($4-$2)/($3-$1))*100}')
 }
 
-# 获取SOC温度 （取所有传感器温度最大值）
-function soc_temp(){
-	[ -z "$soc_code" ] && local soctemp=`sensors 2>/dev/null|grep °C|sed -nr 's#^.*:.*\+(.*)°C .*#\1#gp'|sort -nr|head -n1`
-	[ -z "$soc_code" ] && [ -z "$soctemp" ] && local soctemp=`cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null|sort -nr|head -n1` && [ ! -z "$soctemp" ] && [ "$soctemp" -gt 1000 ] 2>/dev/null && soctemp=$((soctemp / 1000))
-	[ "$soc_code" == "pve" ] && [ ! -z "$pve_host" ] && local soctemp=`ssh -i ~/.ssh/id_rsa root@${pve_host} -p ${pve_port} sensors 2>/dev/null|grep °C|sed -nr 's#^.*:.*\+(.*)°C .*#\1#gp'|sort -nr|head -n1`
-	[ ! -z "$soctemp" ] && echo "$soctemp" && return
-	[ ! -z "$soc_code" ] && eval `echo "$soc_code"` 2>/dev/null
+# 从 sensors 输出中提取 CPU/SOC 温度：只解析 CPU 相关 chip 段，避免把 NVMe/硬盘/主板等温度误判为 CPU 温度
+# 用法：echo "$sensors_output" | parse_cpu_temp_from_sensors
+function parse_cpu_temp_from_sensors(){
+	local input
+	input=$(cat)
+	local result
+	# 优先：CPU 专用芯片（Intel/AMD/ARM 常见命名）
+	result=$(echo "$input" | awk -v RS='' '/^(coretemp|k10temp|k8temp|zenpower|cpu_thermal|soc_thermal|armada_thermal|scpi_sensors|tegra_thermal)-/' | sed -nr 's/^[^+]*\+([0-9]+\.?[0-9]*)°C.*/\1/p' | sort -nr | head -n1)
+	[ ! -z "$result" ] && echo "$result" && return
+	# 次选：ACPI 温度（部分 X86 机型 CPU 温度仅在此暴露）
+	result=$(echo "$input" | awk -v RS='' '/^acpitz-/' | sed -nr 's/^[^+]*\+([0-9]+\.?[0-9]*)°C.*/\1/p' | sort -nr | head -n1)
+	echo "$result"
+}
+
+# 获取 CPU/SOC 温度（单位：°C）
+function get_cpu_temp(){
+	local cputemp=""
+
+	# PVE 宿主机：通过 SSH 读取
+	if [ "$soc_code" = "pve" ] && [ ! -z "$pve_host" ]; then
+		cputemp=$(ssh -i ~/.ssh/id_rsa root@${pve_host} -p ${pve_port} sensors 2>/dev/null | parse_cpu_temp_from_sensors)
+		[ ! -z "$cputemp" ] && echo "$cputemp" && return
+	fi
+
+	# 用户自定义命令（非 pve）
+	if [ ! -z "$soc_code" ] && [ "$soc_code" != "pve" ]; then
+		cputemp=$(eval "$soc_code" 2>/dev/null)
+		[ ! -z "$cputemp" ] && echo "$cputemp" && return
+	fi
+
+	# 本机 sensors
+	if command -v sensors >/dev/null 2>&1; then
+		cputemp=$(sensors 2>/dev/null | parse_cpu_temp_from_sensors)
+		[ ! -z "$cputemp" ] && echo "$cputemp" && return
+	fi
+
+	# 回退：/sys/class/thermal 中 CPU 相关 zone
+	local zone t best=""
+	for zone in /sys/class/thermal/thermal_zone*; do
+		[ -r "$zone/type" ] && [ -r "$zone/temp" ] || continue
+		case "$(cat "$zone/type" 2>/dev/null)" in
+			*cpu*|*x86_pkg_temp*|*soc*|coretemp*|k10temp*)
+				t=$(cat "$zone/temp" 2>/dev/null)
+				[ -z "$t" ] && continue
+				[ "$t" -gt 1000 ] 2>/dev/null && t=$((t / 1000))
+				[ -z "$best" ] && best=$t
+				[ "$t" -gt "$best" ] 2>/dev/null && best=$t
+				;;
+		esac
+	done
+	[ ! -z "$best" ] && echo "$best" && return
+
+	# 最终兜底：所有 thermal_zone 最大值
+	best=$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -nr | head -n1)
+	[ ! -z "$best" ] && [ "$best" -gt 1000 ] 2>/dev/null && best=$((best / 1000))
+	[ ! -z "$best" ] && echo "$best"
 }
 
 # 流量数据
@@ -1224,7 +1273,7 @@ function current_device(){
 function cpu_load(){
 	if [ ! -z "$temperature_enable" ] && [ "$temperature_enable" -eq "1" ] && [ ! -z "$temperature" ]; then
 		[ -z "$temperature_time" ] && temperature_time=`date +%s`
-		local cpu_wendu=`soc_temp`;
+		local cpu_wendu=`get_cpu_temp`;
 		[ -z "$cpu_wendu" ] && echo "`date "+%Y-%m-%d %H:%M:%S"`  【！！！】无法读取设备温度，请检查命令" >> ${logfile}
 
 		if [ `expr $cpu_wendu \> $temperature` -eq "1" ]; then
@@ -2059,7 +2108,7 @@ function send(){
 	fi
 
 	if [ -z "$1" ] && [ ! -z "$router_temp" ] && [ "$router_temp" -eq "1" ]; then
-		local cputemp=`soc_temp`
+		local cputemp=`get_cpu_temp`
 		[ ! -z "$cputemp" ] && local send_content="${send_content}${str_splitline}${str_title_start}${font_blue} 设备温度${font_end}${str_title_end}${str_linefeed}${str_tab}CPU：${cputemp}℃"
 		[ -z "$cputemp" ] && local send_content="${send_content}${str_splitline}${str_title_start}${font_red} 设备温度${font_end}${str_title_end}${str_linefeed}${str_tab}无法获取设备温度"
 	fi
@@ -2137,7 +2186,7 @@ unset i
 # ========== 参数调用 ==========
 case "$1" in
     send)   send ;;
-    soc)    echo $(soc_temp) > ${dir}soc_tmp ;;
+    soc)    echo $(get_cpu_temp) > ${dir}soc_tmp ;;
     client) get_client ;;
     test)   send test ;;
     update_oui)   update_oui ;;
