@@ -303,6 +303,12 @@ a.rmempty = true
 a=s:taboption("basic", Flag,"debuglevel",translate("开启日志"))
 a.rmempty = true
 
+a=s:taboption("basic", Flag,"pushbot_debug",translate("调试日志"))
+a.rmempty = true
+a.default = "0"
+a:depends({debuglevel="1"})
+a.description = translate("仅在排查推送不触发等问题时开启，会在日志里输出大量【调试】前缀的诊断信息<br/>需要先开启上面的【开启日志】")
+
 a= s:taboption("basic", DynamicList, "device_aliases", translate("设备别名"))
 a.rmempty = true
 a.description = translate("<br/> 请输入设备 MAC 和设备别名，用“-”隔开，如：<br/> XX:XX:XX:XX:XX:XX-我的手机")
