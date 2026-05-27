@@ -190,11 +190,6 @@ jobs:
             base="${f%.*}"
             mv "$f" "${base}_${{ matrix.arch }}_${{ matrix.sdk }}.${ext}"
           done
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: aes-tool-${{ matrix.arch }}-${{ matrix.sdk }}
-          path: upload/*
       - name: Upload to release
         uses: ncipollo/release-action@v1
         with:
