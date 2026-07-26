@@ -145,7 +145,7 @@ a:value("cbc", "CBC (推荐)")
 a:value("ecb", "ECB (不安全/无IV)")
 a:value("gcm", "GCM (需安装 aes-tool)")
 a.default = "cbc"
-a.description = translate("CBC/ECB 使用系统自带 openssl 加密<br>GCM 需要额外安装 aes-tool")
+a.description = translate("CBC/ECB 使用系统自带 openssl 加密<br>GCM 需要额外安装 aes-tool<br>IV/Nonce 无需填写：每次推送自动生成随机值并通过 iv 参数随推送下发,App 端只需配置相同的 Key")
 
 -- Key 输入框
 a = s:taboption("basic", Value, "bark_encryption_key", translate('Key (密钥)'),
@@ -181,36 +181,9 @@ function a.validate(self, value, section)
     return value
 end
 
--- IV 输入框
-a = s:taboption("basic", Value, "bark_encryption_iv", translate('IV (偏移量)'),
-    translate("<strong style='color:red;'>CBC/GCM 模式下必填项!</strong>"))
--- 关键修改2: 设置为 false,使其成为必填项
-a:depends({bark_encryption_enable="1", bark_encryption_mode="cbc"})
-a:depends({bark_encryption_enable="1", bark_encryption_mode="gcm"})
-
-function a.validate(self, value, section)
-    local enable = self.map:get(section, "bark_encryption_enable")
-    local mode = self.map:get(section, "bark_encryption_mode") or "cbc"
-
-    -- 只有启用且非 ECB 模式才校验
-    if enable == "1" and mode ~= "ecb" then
-        if not value or value == "" then
-            return nil, translate("CBC/GCM 模式下 IV 不能为空!")
-        end
-
-        local length = #value
-        if mode == "cbc" then
-            if length ~= 16 then
-                return nil, translate("CBC 模式下 IV 长度必须严格为 16 位")
-            end
-        elseif mode == "gcm" then
-            if length ~= 12 then
-                return nil, translate("GCM 模式下 IV 推荐为 12 位 (也可以是 16 位)")
-            end
-        end
-    end
-    return value
-end
+-- IV/Nonce 不再由用户配置：CBC 要求 IV 不可预测，GCM 要求 Nonce 同一密钥下不重复，
+-- 固定值无法满足。现在每次推送自动随机生成，并通过 payload 的 iv 参数随推送下发，
+-- Bark 客户端解密时优先使用推送携带的 iv
 
 a=s:taboption("basic", Flag,"bark_srv_enable",translate("自建 Bark 服务器"))
 a.default=0

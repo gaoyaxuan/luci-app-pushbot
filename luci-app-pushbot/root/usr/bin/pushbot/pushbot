@@ -70,7 +70,7 @@ function read_config(){
 	"up_timeout" "down_timeout" "timeout_retry_count" "thread_num" "soc_code" "pve_host" "pve_port"\
 	"err_enable" "err_sheep_enable" "err_device_aliases" "network_err_event" "system_time_event" "autoreboot_time" "network_restart_time" "public_ip_event" "public_ip_retry_count" \
 	"jsonpath" "dd_webhook" "we_webhook" "pp_token" "pp_channel" "pp_webhook" "pp_topic_enable" "pp_topic" "fs_webhook" "pushdeer_key" "pushdeer_srv_enable" "pushdeer_srv"  \
-	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_encryption_iv" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
+	"bark_srv_enable" "bark_srv" "bark_encryption_enable"  "bark_encryption_algo" "bark_encryption_mode" "bark_encryption_key" "bark_token" "bark_sound" "bark_icon_enable" "bark_icon"  "bark_level" \
 	"router_storage" "disk_standby_action" "disk_skip_force_count" \
 	"storage_err_enable" "storage_err_interval"
 
@@ -204,16 +204,40 @@ function diy_send(){
           echo "$hex"
         }
 
+        # 生成 n 个随机字母数字字符：/dev/urandom 为 CSPRNG，tr -dc 丢弃
+        # 字符集外的字节等价于拒绝采样，62 个候选字符均匀分布无取模偏差。
+        # Bark 客户端把 iv 参数按字符串字节使用，因此必须是可打印字符
+        gen_random_iv() {
+          LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c "$1"
+        }
+
+        # CBC 要求 IV 不可预测，GCM 要求 Nonce 同一密钥下不重复：
+        # 每次推送随机生成，并通过 payload 的 iv 参数下发给客户端解密，不再使用固定值
+        local random_iv=""
+        local random_iv_len=0
+        case "${bark_encryption_mode}" in
+          cbc) random_iv_len=16 ;;
+          gcm) random_iv_len=12 ;;
+        esac
+        if [ "${random_iv_len}" -gt 0 ]; then
+          random_iv=$(gen_random_iv "${random_iv_len}")
+          if [ ${#random_iv} -ne "${random_iv_len}" ]; then
+            echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】随机 IV/Nonce 生成失败，取消本次加密推送" >> ${logfile}
+            rm -f "$contentFile" "$finalJsonFile"
+            return 1
+          fi
+        fi
+
         local ciphertext=""
         local encrypt_status=1
         local temp_cipher=""
 
         if command -v /usr/bin/aes-tool >/dev/null 2>&1; then
           # ===== 有 aes-tool：所有模式统一使用 aes-tool =====
-          local iv_hex="${bark_encryption_iv}"
-          [ "${bark_encryption_mode}" = "ecb" ] && iv_hex="00000000000000000000000000000000"
+          local iv_arg="${random_iv}"
+          [ "${bark_encryption_mode}" = "ecb" ] && iv_arg="0000000000000000"
           temp_cipher=$(mktemp)
-          execLog=$(/usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_hex}" "${contentFile}" "${temp_cipher}" --ascii 2>&1)
+          execLog=$(/usr/bin/aes-tool enc "${bark_encryption_mode}" "${bark_encryption_algo}" "${bark_encryption_key}" "${iv_arg}" "${contentFile}" "${temp_cipher}" --ascii 2>&1)
           encrypt_status=$?
           ciphertext=$(cat "$temp_cipher")
           rm -f "$temp_cipher"
@@ -235,7 +259,7 @@ function diy_send(){
             ciphertext=$(openssl enc -${openssl_cipher} -a -A -K "${key_hex}" -in "${contentFile}" 2>&1)
             encrypt_status=$?
           else
-            local iv_hex=$(str_to_hex "${bark_encryption_iv}")
+            local iv_hex=$(str_to_hex "${random_iv}")
             ciphertext=$(openssl enc -${openssl_cipher} -a -A -K "${key_hex}" -iv "${iv_hex}" -in "${contentFile}" 2>&1)
             encrypt_status=$?
           fi
@@ -256,11 +280,12 @@ function diy_send(){
         fi
         # 清理密文（移除换行符和空格）
         ciphertext=$(echo "$ciphertext" | tr -d '\n\r' | sed 's/[[:space:]]//g')
-        # 组装加密 JSON
+        # 组装加密 JSON（CBC/GCM 附带本次使用的随机 iv，客户端解密时优先使用；ECB 无 iv）
         jq -c -n \
            --arg ct "$ciphertext" \
+           --arg iv "$random_iv" \
            --argjson dks "$bark_token_array" \
-           '{ciphertext: $ct, device_keys: $dks}' > "$finalJsonFile" || {
+           '{ciphertext: $ct, device_keys: $dks} + (if $iv == "" then {} else {iv: $iv} end)' > "$finalJsonFile" || {
           echo "`date "+%Y-%m-%d %H:%M:%S"` 【！！！】生成最终 JSON 失败" >> ${logfile}
           rm -f "$contentFile" "$finalJsonFile"
           return 1

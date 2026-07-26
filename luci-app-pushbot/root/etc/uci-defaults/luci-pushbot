@@ -5,6 +5,8 @@ uci -q batch <<-EOF >/dev/null
 	add ucitrack pushbot
 	set ucitrack.@pushbot[-1].init=pushbot
 	commit ucitrack
+  delete pushbot.pushbot.bark_encryption_iv
+  commit pushbot
 EOF
 
 rm -rf /tmp/luci-*
